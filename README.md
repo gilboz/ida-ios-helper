@@ -330,5 +330,15 @@ your IDE.
   Alternatively, you can create `idapython.pth` in `$VENV_FOLDER/Lib/site-packages` and add the path to it.
 
 Inside IDA, you can use `ioshelper.reload()` to reload the plugin during development.
-If you create file name `DEBUG` inside `src/`, then you can use `F2` to reload the
-plugin.
+
+### Configuration
+
+The plugin reads an optional TOML config file at `~/.idapro/ioshelper.cfg` when it loads.
+The file is optional — when it is absent the built-in defaults apply.
+
+See [`ioshelper.cfg.example`](ioshelper.cfg.example) for a documented template covering
+every setting (`debug`, `disabled_features`, and `disabled_components`). Copy it to
+`~/.idapro/ioshelper.cfg` and edit it to taste.
+
+Edit the file and reload the plugin (`F2` in debug mode, or `ioshelper.reload()`) to pick
+up changes.

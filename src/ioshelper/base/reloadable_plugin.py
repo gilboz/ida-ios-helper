@@ -7,10 +7,8 @@ import contextlib
 import dataclasses
 import sys
 from collections.abc import Callable
-from pathlib import Path
 from typing import Protocol
 
-import ida_diskio
 import ida_hexrays
 import ida_idaapi
 import ida_kernwin
@@ -18,23 +16,7 @@ import idaapi
 from ida_idaapi import plugin_t
 from ida_kernwin import UI_Hooks, action_desc_t
 
-IS_DEBUG = (Path(__file__).parent.parent.parent / "DEBUG").exists()
-
-DISABLED_PLUGINS_PATH = Path(ida_diskio.get_user_idadir()) / "ioshelper_disabled_plugins.txt"
-
-
-def get_disabled_plugins() -> set[str]:
-    """Return a list of disabled plugins."""
-    if not DISABLED_PLUGINS_PATH.exists():
-        return set()
-
-    disabled_plugins: set[str] = set()
-    with DISABLED_PLUGINS_PATH.open("r") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                disabled_plugins.add(line)
-    return disabled_plugins
+from .config import config
 
 
 class Component:
@@ -87,7 +69,7 @@ class PluginCore:
         self.loaded = False
         self.mounted = False
         all_components = [factory(self) for factory in component_factories]
-        self._components = [component for component in all_components if component.name not in get_disabled_plugins()]
+        self._components = [component for component in all_components if config.is_component_enabled(component.name)]
 
         # we can 'defer' the load of the plugin core a little bit. this
         # ensures that all the other plugins (eg, decompilers) can get loaded
@@ -218,7 +200,7 @@ class ReloadablePlugin(abc.ABC, plugin_t):
                 self._reload_plugin_action_id,
                 f"Reload plugin: {getattr(self, 'wanted_name', self._global_name)}",
                 PluginReloadActionHandler(self),
-                "f2" if IS_DEBUG else None,
+                "f2" if config.debug else None,
             )
         )
         # Keep plugin alive

@@ -173,11 +173,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# debug file
-src/DEBUG
-
-# Disabled plugins file
-src/DISABLED_PLUGINS
-
 # Mac cache file
 .DS_Store

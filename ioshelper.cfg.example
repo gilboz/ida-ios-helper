@@ -1,0 +1,17 @@
+# Example iOS helper plugin configuration.
+#
+# Copy this file to ~/.idapro/ioshelper.cfg and edit it to taste. Every setting is
+# optional; the values below are the defaults, so an absent (or empty) config file
+# behaves exactly like this one.
+
+# Development conveniences: the F2 reload and F4 toggle (optimizations on/off)
+# hotkeys, plus debug-only components.
+debug = false
+
+# Feature groups to skip entirely. Known features: "objc", "swift".
+# e.g. disabled_features = ["swift"] drops Swift support on a pure Obj-C binary.
+disabled_features = []
+
+# Individual components to skip, by name (finer-grained than disabled_features).
+# e.g. disabled_components = ["SwiftStrings", "Obj-C refcount optimizer"]
+disabled_components = []

@@ -4,7 +4,8 @@ import ida_kernwin
 import idaapi
 from idahelper import file_format, widgets
 
-from .base.reloadable_plugin import IS_DEBUG, ComponentFactory, PluginCore, UIAction, UIActionsComponent
+from .base.config import Feature, config
+from .base.reloadable_plugin import ComponentFactory, PluginCore, UIAction, UIActionsComponent
 from .plugins.common.clang_blocks import clang_block_args_analyzer_component, clang_block_optimizer_component
 from .plugins.common.globals import globals_component
 from .plugins.common.jump_to_string import jump_to_string_component
@@ -48,7 +49,7 @@ toggle_ios_helper_mount_component = UIActionsComponent.factory(
                 TOGGLE_ACTION_ID,
                 "Toggle iOS helper optimizations",
                 IOSHelperToggleActionHandler(core),
-                "f4" if IS_DEBUG else None,
+                "f4" if config.debug else None,
             ),
             menu_location=UIAction.base_location(core),
         )
@@ -78,9 +79,11 @@ class IOSHelperToggleActionHandler(ida_kernwin.action_handler_t):
 
 
 def get_modules_for_file() -> list[ComponentFactory]:
+    is_objc = file_format.is_objc()
     return [
         *shared_modules(),
-        *(objc_plugins() if file_format.is_objc() else []),
+        *(objc_plugins() if is_objc and config.is_feature_enabled(Feature.OBJC) else []),
+        *(swift_plugins() if is_objc and config.is_feature_enabled(Feature.SWIFT) else []),
         *(kernel_cache_plugins() if file_format.is_kernelcache() else []),
     ]
 
@@ -98,8 +101,9 @@ def shared_modules() -> list[ComponentFactory]:
         show_segment_xrefs_component,
         globals_component,
     ]
-    if IS_DEBUG:
+    if config.debug:
         from ioshelper.debug import dump_ps_component
+
         modules.append(dump_ps_component)
     return modules
 
@@ -109,6 +113,11 @@ def objc_plugins() -> list[ComponentFactory]:
         oslog_component,
         objc_xrefs_component,
         objc_sugar_component,
+    ]
+
+
+def swift_plugins() -> list[ComponentFactory]:
+    return [
         swift_types_component,
         swift_types_hook_component,
         swift_prolog_hook_component,
