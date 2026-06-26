@@ -48,6 +48,7 @@ toggle_ios_helper_mount_component = UIActionsComponent.factory(
                 TOGGLE_ACTION_ID,
                 "Toggle iOS helper optimizations",
                 IOSHelperToggleActionHandler(core),
+                "f4" if IS_DEBUG else None,
             ),
             menu_location=UIAction.base_location(core),
         )
