@@ -1,96 +1,40 @@
-__all__ = ["objc_selector_hexrays_hooks_t"]
+"""
+Pseudocode sugar that strips redundant selector/class arguments from Obj-C calls.
 
-import itertools
-import re
+A Hex-Rays ``func_printed`` hook deletes the selector-string argument (and, for class
+methods, the ``&OBJC_CLASS___…`` receiver) that merely echo an already-rendered Obj-C
+method name, collapsing any line left holding only closers back into the call above.
+"""
+
+__all__ = ["objc_selector_hexrays_hooks_t"]
 
 import ida_hexrays
 from ida_hexrays import Hexrays_Hooks, carg_t, carglist_t, cexpr_t, cfunc_t, citem_t
-from ida_kernwin import simpleline_t
-from ida_lines import (
-    COLOR_OFF,
-    COLOR_ON,
-    COLSTR,
-    SCOLOR_ADDR,
-    SCOLOR_DEMNAME,
-    SCOLOR_IMPNAME,
-    SCOLOR_LOCNAME,
-    SCOLOR_SYMBOL,
-    tag_remove,
-)
-from ida_pro import strvec_t
 from idahelper import memory, objc
 from idahelper.ast import cexpr
+from idahelper.pseudocode import Anchor, Color, Line, Pseudocode, Section, Token
 
-SELECTOR_MARKER = "!@#$sel$#@!"
-COMMA_COLORED = COLSTR(",", SCOLOR_SYMBOL)
-INSIGNIFICANT_LENGTH_FOR_LINE = 5
-MAX_LINE_SIZE = 120
-
-
-# COLOR_ON = 0x1, SCOLOR_ADDR = 0x28, SCOLOR_LOCNAME = 0x19, SCOLOR_SYMBOL = 0x9
-
-SEL_TOKEN_REGEX = re.compile(
-    "(?P<prefix>"
-    + re.escape(COMMA_COLORED + " ")
-    + r")?"
-    + re.escape(COLOR_ON + SCOLOR_ADDR)
-    + r"(?P<index>[0-9A-Fa-f]{16})"
-    + re.escape(COLOR_ON + SCOLOR_ADDR)
-    + r"(?P=index)"
-    + re.escape(COLSTR('"', SCOLOR_SYMBOL))
-    + re.escape(COLOR_ON + SCOLOR_LOCNAME)
-    + r"(?P<selector>[A-Za-z0-9_:]+)"
-    + '"'
-    + re.escape(COLOR_OFF + SCOLOR_LOCNAME)
-)
-
-"""
-a regex for a possible selector in IDA's pseudocode, with support for the prefix ", "
-Its groups are: prefix, index, and selector.
-"""
-
-SEL_TOKEN_REGEX_2 = re.compile(
-    "(?P<prefix>"
-    + re.escape(COMMA_COLORED + " ")
-    + r")?"
-    + re.escape(COLOR_ON + SCOLOR_ADDR)
-    + r"(?P<index>[0-9A-Fa-f]{16})"
-    + re.escape(COLOR_ON + SCOLOR_LOCNAME)
-    + r'"(?P<selector>[A-Za-z0-9_:]+)"'
-    + re.escape(COLOR_OFF + SCOLOR_LOCNAME)
-)
-"""
-another regex for a possible selector in IDA's pseudocode that I found in IDA 9.2, with support for the prefix ", "
-Its groups are: prefix, index, and selector.
-"""
-
-SEL_TOKEN_REGEXES = [SEL_TOKEN_REGEX, SEL_TOKEN_REGEX_2]
-
-# noinspection RegExpDuplicateCharacterInClass
-CLASS_TOKEN_REGEX = re.compile(
-    re.escape(COLOR_ON + SCOLOR_ADDR)
-    + r"(?P<index>[0-9A-Fa-f]{16})"
-    + re.escape(COLSTR("&", SCOLOR_SYMBOL))
-    + re.escape(COLOR_ON + SCOLOR_ADDR)
-    + r"(?P<index2>[0-9A-Fa-f]{16})"
-    + re.escape(COLOR_ON)
-    + ("[" + re.escape(SCOLOR_IMPNAME) + "|" + re.escape(SCOLOR_DEMNAME) + "]")
-    + "OBJC_CLASS___"
-    + "(?P<class>[A-Za-z0-9_]+)"
-    + re.escape(COLOR_OFF)
-    + ("[" + re.escape(SCOLOR_IMPNAME) + "|" + re.escape(SCOLOR_DEMNAME) + "]")
-    + "(?P<postfix>"
-    + re.escape(COMMA_COLORED)
-    + r" ?)?"
-)
-"""
-a regex for possible obj-c class in IDA's pseudocode, with support for the postfix ","
-Its groups are: index, index2, class and postfix.
-"""
+# Object-C class refs are rendered as ``OBJC_CLASS___<Name>``.
+OBJC_CLASS_PREFIX = "OBJC_CLASS___"
+# Visible characters a line may consist of (besides whitespace) and still be merged
+# upward after its selector/class argument was removed — closers and separators.
+CLOSER_CHARS = frozenset(")]};,")
 
 
 class objc_selector_hexrays_hooks_t(Hexrays_Hooks):
+    """
+    Strip the redundant selector/class arguments from rendered Obj-C method calls.
+
+    When IDA prints an Obj-C method call such as ``-[Foo bar:](recv, "bar:", x)``, the
+    selector string (and, for class methods, the ``&OBJC_CLASS___Foo`` receiver) just
+    echoes the method name. This ``func_printed`` hook deletes those tokens from the
+    tokenized pseudocode, leaving the cleaner ``-[Foo bar:](recv, x)``.
+    """
+
     def func_printed(self, cfunc: cfunc_t) -> int:  # noqa: C901
+        """
+        Collect the redundant selector/class arguments and strip them from the text.
+        """
         selectors_to_remove: dict[int, str] = {}  # obj_id -> selector
         classes_to_remove: set[int] = set()  # obj_id
         index_to_sel: dict[int, str] = {}  # index, selector
@@ -144,112 +88,201 @@ class objc_selector_hexrays_hooks_t(Hexrays_Hooks):
         return 0
 
 
-def modify_text(cfunc: cfunc_t, index_to_sel: dict[int, str], class_indices_to_remove: set[int]):
-    # Early return if no tokens to replace
-    if not index_to_sel:
+def modify_text(cfunc: cfunc_t, index_to_sel: dict[int, str], class_indices_to_remove: set[int]) -> None:
+    """
+    Remove the redundant selector/class arguments from the rendered pseudocode.
+
+    Each code line is parsed into colored tokens; the argument tokens whose ctree
+    anchor matches ``index_to_sel`` / ``class_indices_to_remove`` are deleted along
+    with their separating comma. A line that is left empty is dropped, and a line
+    left holding only closers (e.g. ``));``) is merged up into the nearest
+    surviving line — so a wrapped call collapses back to balanced text.
+    """
+    if not index_to_sel and not class_indices_to_remove:
         return
 
-    ps: strvec_t = cfunc.get_pseudocode()
-    lines_marked_for_removal: list[simpleline_t] = []
-    # Iterate bottom-to-top so a line always merges into its still-surviving
-    # predecessor (line 0 has no predecessor, so we stop at 1).
-    for i in range(len(ps) - 1, 0, -1):
-        line: simpleline_t = ps[i]
-        prev_line = ps[i - 1].line
-        should_merge = modify_selectors(index_to_sel, line, prev_line)
-        should_merge |= modify_class(class_indices_to_remove, line, prev_line)
+    # Resolve the pseudocode once: `func_printed` may run mid-build, and calling
+    # `get_pseudocode()` again (e.g. via `Pseudocode.from_cfunc`) can hand back a
+    # different strvec — so parse and write back through this single object.
+    ps = cfunc.get_pseudocode()
+    pc = Pseudocode.from_lines([Line.parse(ps[i].line) for i in range(len(ps))], cfunc.hdrlines)
+    dirty: set[int] = set()
+    to_erase: list[int] = []
+    survivors: list[int] = []  # kept code-line indices, newest last (merge targets)
 
-        if should_merge:
-            lines_marked_for_removal.append(line)
-            merge(line.line, ps[i - 1])
+    for i, line in enumerate(pc.lines):
+        if pc.section_of(i) != Section.CODE:
+            continue
+        if not _remove_objc_args(line, index_to_sel, class_indices_to_remove):
+            survivors.append(i)
+            continue
 
-    # Lines must be erased in descending index order: `ps.erase` is positional
-    # (each `simpleline_t` is an iterator into the vector), so erasing a low index
-    # first would invalidate the iterators of the higher ones still to remove. The
-    # reverse loop above already collected them descending, so erase as-is.
-    for line_to_remove in lines_marked_for_removal:
-        ps.erase(line_to_remove)
+        dirty.add(i)
+        stripped = line.text.strip()
+        if not stripped:
+            to_erase.append(i)
+        elif survivors and all(ch in CLOSER_CHARS for ch in stripped):
+            target = survivors[-1]
+            _merge_into(pc.lines[target], line)
+            dirty.add(target)
+            dirty.discard(i)
+            to_erase.append(i)
+        else:
+            survivors.append(i)
 
-
-def modify_selectors(index_to_sel: dict[int, str], line: simpleline_t, prev_line: str):
-    """Try to remove selectors from a line. Returns whether we should merge the line with the previous line"""
-    should_merge = False
-    # Find all obj-c calls in the line
-    results_unsorted = itertools.chain(*[re.finditer(pattern, line.line) for pattern in SEL_TOKEN_REGEXES])
-    # Reverse the results so indices will not change
-    results = sorted(results_unsorted, key=lambda m: m.start(), reverse=True)
-    for result in results:
-        result: re.Match
-        index = int(result.group("index"), 16)
-        if index in index_to_sel:
-            # We found a selector token, remove it from the list
-            sel = index_to_sel.pop(index)
-            if sel != result.group("selector"):
-                print("[Error]: selector mismatch. Expected:", sel, "Actual:", result.group("selector"))
-                continue
-
-            # Remove the selector, check if we need to merge lines
-            left, right = result.span()
-            before_selector, after_selector = line.line[:left], line.line[right:]
-            should_merge = should_merge or should_merge_line(before_selector, after_selector, prev_line)
-            line.line = before_selector + after_selector
-    return should_merge
+    erase_set = set(to_erase)
+    for i in dirty - erase_set:
+        ps[i].line = pc.lines[i].to_tagged()
+    # `ps.erase` is positional, so erase high indices first to keep the rest valid.
+    for i in sorted(to_erase, reverse=True):
+        ps.erase(ps[i])
 
 
-def modify_class(class_indices_to_remove: set[int], line: simpleline_t, prev_line: str):
-    """Try to remove class from a line. Returns whether we should merge the line with the previous line"""
-    should_merge = False
-
-    # Reverse the results so indices will not change
-    for result in reversed(list(re.finditer(CLASS_TOKEN_REGEX, line.line))):
-        result: re.Match
-        index = int(result.group("index"), 16)
-        index2 = int(result.group("index2"), 16)
-        if index in class_indices_to_remove:
-            # We found a class token, remove it from the list
-            class_indices_to_remove.remove(index)
-
-            if index2 != index + 1:
-                print("[Error]: class indices mismatch for second object. Expected:", index + 1, "Actual:", index2)
-                continue
-
-            # Remove the class, check if we need to merge lines
-            left, right = result.span()
-            before_class, after_class = line.line[:left], line.line[right:]
-            should_merge = should_merge or should_merge_line(before_class, after_class, prev_line)
-            line.line = before_class + after_class
-    return should_merge
-
-
-def should_merge_line(before_selector: str, after_selector: str, prev_line: str) -> bool:
+def _remove_objc_args(line: Line, index_to_sel: dict[int, str], class_indices_to_remove: set[int]) -> bool:
     """
-    Given a `line` with a selector marker and the previous line, should we merge the two lines.
-    """
-    before_without_tags = tag_remove(before_selector)
+    Delete matching selector/class argument tokens from ``line``.
 
-    # We only remove lines that starts with the selector
-    if before_without_tags and not before_without_tags.isspace():
+    Args:
+        line: The parsed pseudocode line, mutated in place.
+        index_to_sel: Selector ctree-item index -> selector string; matched entries
+            are consumed.
+        class_indices_to_remove: ``&OBJC_CLASS___`` ref indices to strip; matched
+            entries are consumed.
+
+    Returns:
+        Whether any token was removed from ``line``.
+    """
+    tokens = line.tokens
+    owners = _owning_anchors(tokens)
+    to_delete: set[int] = set()
+
+    for i, token in enumerate(tokens):
+        anchor = owners[i]
+        if anchor is None:
+            continue
+        if token.color == Color.LOCNAME and anchor.index in index_to_sel:
+            if token.text.strip('"') != index_to_sel[anchor.index]:
+                continue  # a different string happens to share the anchor — leave it
+            del index_to_sel[anchor.index]
+            _mark_selector(tokens, i, anchor.index, to_delete)
+        elif token.color in (Color.DEMNAME, Color.IMPNAME) and token.text.startswith(OBJC_CLASS_PREFIX):
+            ref_index = anchor.index - 1  # the `&` ref is the item before its object
+            if ref_index in class_indices_to_remove:
+                class_indices_to_remove.discard(ref_index)
+                _mark_class(tokens, i, anchor.index, to_delete)
+
+    if not to_delete:
         return False
-
-    after_without_tags = tag_remove(after_selector)
-    # If the line is short, allow merging
-    if len(after_without_tags) < INSIGNIFICANT_LENGTH_FOR_LINE:
-        return True
-
-    # Merge if it will not lead to a long line
-    prev_line_without_tags = tag_remove(prev_line)
-    return len(after_without_tags) + len(prev_line_without_tags) < MAX_LINE_SIZE
+    line.tokens = [token for j, token in enumerate(tokens) if j not in to_delete]
+    return True
 
 
-def merge(text: str, line: simpleline_t) -> None:
-    """Merge `text` to the end of `line`. If `line` ends with a comma, the comma will be removed."""
-    line_without_tags = tag_remove(line.line)
-    if line_without_tags.endswith(","):
-        last_comma_index = line.line.rfind(COMMA_COLORED)
-        line.line = line.line[:last_comma_index] + line.line[last_comma_index + len(COMMA_COLORED) :]
-    line.line += text.strip()
+def _owning_anchors(tokens: list[Token]) -> list[Anchor | None]:
+    """
+    For each token, the nearest anchor at or before it (the ctree item it belongs to).
+    """
+    owners: list[Anchor | None] = []
+    active: Anchor | None = None
+    for token in tokens:
+        if token.anchor is not None:
+            active = token.anchor
+        owners.append(active)
+    return owners
 
 
-def to_hex(n: int, *, length: int) -> str:
-    """Convert an integer to a hex string with leading zeros"""
-    return f"{n:0{length}X}"
+def _mark_selector(tokens: list[Token], value: int, index: int, to_delete: set[int]) -> None:
+    """
+    Mark a selector string token, its anchors / opening quote, and a separating comma.
+    """
+    to_delete.add(value)
+    start = value
+    while start > 0 and _is_selector_head(tokens[start - 1], index):
+        start -= 1
+        to_delete.add(start)
+    _mark_comma(tokens, start, value, to_delete)
+
+
+def _mark_class(tokens: list[Token], value: int, obj_index: int, to_delete: set[int]) -> None:
+    """
+    Mark an ``OBJC_CLASS___`` token, its ``&`` ref / anchors, and a separating comma.
+    """
+    to_delete.add(value)
+    start = value
+    while start > 0 and _is_class_head(tokens[start - 1], obj_index):
+        start -= 1
+        to_delete.add(start)
+    _mark_comma(tokens, start, value, to_delete)
+
+
+def _is_selector_head(token: Token, index: int) -> bool:
+    """
+    A token that precedes the selector string and belongs to it (its anchor or opening quote).
+    """
+    if token.anchor is not None:
+        return token.anchor.index == index
+    return token.is_symbol('"')
+
+
+def _is_class_head(token: Token, obj_index: int) -> bool:
+    """
+    A token that precedes the ``OBJC_CLASS___`` name and belongs to it (its anchors or the ``&``).
+    """
+    if token.anchor is not None:
+        return token.anchor.index in (obj_index, obj_index - 1)
+    return token.is_symbol("&")
+
+
+def _mark_comma(tokens: list[Token], start: int, end: int, to_delete: set[int]) -> None:
+    """
+    Mark the comma separating the argument spanning ``[start, end]`` from its siblings.
+
+    Prefers the trailing comma (``arg, …``); falls back to the leading comma when the
+    argument is last (``…, arg``). The accompanying space is removed with the comma.
+    """
+    after = end + 1
+    if after < len(tokens) and tokens[after].is_symbol(","):
+        to_delete.add(after)
+        if after + 1 < len(tokens) and tokens[after + 1].is_blank:
+            to_delete.add(after + 1)
+        return
+
+    before = start - 1
+    space = None
+    if before >= 0 and tokens[before].is_blank:
+        space, before = before, before - 1
+    if before >= 0 and tokens[before].is_symbol(","):
+        to_delete.add(before)
+        if space is not None:
+            to_delete.add(space)
+
+
+def _merge_into(target: Line, source: Line) -> None:
+    """
+    Append ``source``'s closers to ``target``, dropping a now-dangling trailing comma.
+    """
+    if target.text.rstrip().endswith(","):
+        _drop_trailing_comma(target.tokens)
+    target.tokens.extend(_lstrip_tokens(source.tokens))
+
+
+def _drop_trailing_comma(tokens: list[Token]) -> None:
+    """
+    Remove the last visible comma token (and trailing blanks) from a line's tokens.
+    """
+    for i in range(len(tokens) - 1, -1, -1):
+        token = tokens[i]
+        if token.anchor is not None or token.is_blank:
+            continue
+        if token.is_symbol(","):
+            del tokens[i]
+        return
+
+
+def _lstrip_tokens(tokens: list[Token]) -> list[Token]:
+    """
+    Drop leading indentation and position anchors so merged closers sit flush.
+    """
+    i = 0
+    while i < len(tokens) and (tokens[i].anchor is not None or tokens[i].is_blank):
+        i += 1
+    return tokens[i:]

@@ -60,6 +60,8 @@ def _install_hooks_and_setup() -> None:
         "ioshelper.plugins.swift.swift_types.swift_types",
         "ioshelper.plugins.swift.swift_types.prolog_rewrite",
         "ioshelper.plugins.swift.swift_oslog.log_hook",
+        "ioshelper.plugins.objc.objc_sugar.objc_sugar",
+        "ioshelper.plugins.objc.objc_sugar.objc_msgsend",
     ):
         if modname in sys.modules:
             try:
@@ -69,11 +71,20 @@ def _install_hooks_and_setup() -> None:
         else:
             __import__(modname)
 
+    from ioshelper.plugins.objc.objc_sugar.objc_msgsend import objc_msgsend_hexrays_hooks_t
+    from ioshelper.plugins.objc.objc_sugar.objc_sugar import objc_selector_hexrays_hooks_t
     from ioshelper.plugins.swift.swift_oslog.log_hook import SwiftLogRewriteHook
     from ioshelper.plugins.swift.swift_types.prolog_rewrite import SwiftPrologRewriteHook
     from ioshelper.plugins.swift.swift_types.swift_types import SwiftClassCallHook, fix_swift_types
 
-    for cls in (SwiftClassCallHook, SwiftPrologRewriteHook, SwiftLogRewriteHook):
+    for cls in (
+        SwiftClassCallHook,
+        SwiftPrologRewriteHook,
+        SwiftLogRewriteHook,
+        # Match core.objc_plugins order: msgsend installed before sugar so it fires after it.
+        objc_msgsend_hexrays_hooks_t,
+        objc_selector_hexrays_hooks_t,
+    ):
         try:
             h = cls()
             h.hook()
