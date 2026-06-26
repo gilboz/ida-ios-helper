@@ -8,18 +8,51 @@ from idahelper.microcode import minsn, mop, mreg
 
 from ioshelper.base.utils import CounterMixin, match
 
+PREFIXES_TO_IGNORE: list[str] = [
+    "_",
+    "__",
+    "j_",
+    "j__",
+]
+
+_SORTED_PREFIXES = sorted(PREFIXES_TO_IGNORE, key=len, reverse=True)
+
+_SUFFIXES_TO_IGNORE: list[str | re.Pattern] = [
+    re.compile(r"_x\d{1,2}$"),
+    re.compile(r"_\d+$"),
+]
+
+
+def match_func_name(arr: list[str | re.Pattern], name: str) -> bool:
+    for prefix in _SORTED_PREFIXES:
+        if name.startswith(prefix):
+            name = name[len(prefix) :]
+            break
+    for suffix in _SUFFIXES_TO_IGNORE:
+        if isinstance(suffix, str):
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+        else:
+            m = suffix.search(name)
+            if m is not None and m.end() == len(name):
+                name = name[: m.start()]
+                break
+
+    return match(arr, name)
+
+
 # Replace f(x) with x
 ID_FUNCTIONS_TO_REPLACE_WITH_ARG: list[str | re.Pattern] = [
     "objc_retain",
     "objc_retainAutorelease",
     "objc_autoreleaseReturnValue",
     "objc_autorelease",
-    "_objc_claimAutoreleasedReturnValue",
-    re.compile(r"_objc_claimAutoreleasedReturnValue_(\d+)"),
-    "_objc_retainBlock",
+    "objc_claimAutoreleasedReturnValue",
+    "objc_retainBlock",
     "objc_unsafeClaimAutoreleasedReturnValue",
     "objc_retainAutoreleasedReturnValue",
-    "_swift_bridgeObjectRetain",
+    "swift_bridgeObjectRetain",
 ]
 
 # Remove f(x) calls
@@ -27,42 +60,29 @@ VOID_FUNCTIONS_TO_REMOVE_WITH_SINGLE_ARG: list[str | re.Pattern] = [
     # Objective-C
     "objc_release",
     # intrinsics
-    "__break",
-    # CFoundation
-    # "_CFRelease",
-    # re.compile(r"_CFRelease_(\d+)"),
+    "break",
     # swift
-    "_swift_bridgeObjectRelease",
+    "swift_bridgeObjectRelease",
 ]
 
 VOID_FUNCTION_TO_REMOVE_WITH_MULTIPLE_ARGS: list[str | re.Pattern] = [
     # Blocks
-    "__Block_object_dispose",
-    "_Block_object_dispose",
-    re.compile(r"__Block_object_dispose_(\d+)"),
+    "Block_object_dispose",
 ]
 
 # Replace assign(&x, y) with x = y;
 ASSIGN_FUNCTIONS: list[str | re.Pattern] = [
-    "_objc_storeStrong",
-    "j__objc_storeStrong",
-    re.compile(r"j__objc_storeStrong_(\d+)"),
+    "objc_storeStrong",
 ]
 
 SET_PROPERTY_FUNCTIONS: list[str | re.Pattern] = [
-    "_objc_setProperty_atomic_copy",
-    "j__objc_setProperty_atomic_copy",
-    re.compile(r"j__objc_setProperty_atomic_copy_(\d+)"),
+    "objc_setProperty_atomic_copy",
     "objc_setProperty_nonatomic_copy",
-    "j__objc_setProperty_nonatomic_copy",
-    re.compile(r"j__objc_setProperty_nonatomic_copy_(\d+)"),
 ]
 
 # Replace get(x, offset) with x.field;
 GET_PROPERTY_FUNCTIONS: list[str | re.Pattern] = [
-    "_objc_getProperty",
-    "j__objc_getProperty",
-    re.compile(r"j__objc_getProperty_(\d+)"),
+    "objc_getProperty",
 ]
 
 
@@ -82,12 +102,14 @@ class mop_optimizer_t(mop_visitor_t, CounterMixin):
         # Calls with names
         name = minsn.get_func_name_of_call(insn)
         if name is None:
+            print(f'[Error] No name for {insn.dstr()}')
             return
 
         # If it should be optimized to first arg, optimize
-        if match(ID_FUNCTIONS_TO_REPLACE_WITH_ARG, name):
+        if match_func_name(ID_FUNCTIONS_TO_REPLACE_WITH_ARG, name):
             fi: mcallinfo_t = insn.d.f
             if fi.args.empty():
+                print(f'[Error] No arguments for {name}')
                 # No arguments, probably IDA have not optimized it yet
                 return
 
@@ -96,7 +118,7 @@ class mop_optimizer_t(mop_visitor_t, CounterMixin):
             self.count()
 
         # If it should be optimized to field access, optimize
-        elif match(GET_PROPERTY_FUNCTIONS, name):
+        elif match_func_name(GET_PROPERTY_FUNCTIONS, name):
             fi: mcallinfo_t = insn.d.f
             if fi.args.empty():
                 # No arguments, probably IDA have not optimized it yet
@@ -138,54 +160,82 @@ class insn_optimizer_t(minsn_visitor_t, CounterMixin):
             if optimization(name, insn, blk):
                 return
 
-    def void_function_to_remove(self, name: str, insn: minsn_t, blk: mblock_t) -> bool:
-        if match(VOID_FUNCTIONS_TO_REMOVE_WITH_SINGLE_ARG, name):
-            single_arg = True
-        elif match(VOID_FUNCTION_TO_REMOVE_WITH_MULTIPLE_ARGS, name):
-            single_arg = False
-        else:
+    def try_remove_call(
+        self,
+        insn: minsn_t,
+        *,
+        name: str,
+        exact_arg_count: int | None = 1,
+        require_void_return: bool = False,
+        require_discarded_return: bool = False,
+    ) -> bool:
+        """
+        Nop a call instruction when argument and return-value preconditions are satisfied.
+        """
+        fi: mcallinfo_t = insn.d.f
+
+        if fi.args.empty():
             return False
 
-        fi: mcallinfo_t = insn.d.f
-        if fi.args.empty() or (single_arg and len(fi.args) != 1):
-            # No arguments, probably not optimized yet
-            # Or not matching the number of arguments
+        if exact_arg_count is not None and len(fi.args) != exact_arg_count:
             return False
 
         if any(arg.has_side_effects() for arg in fi.args):
             print("[Error] arguments with side effects are not supported yet!")
             return False
 
-        if not fi.return_type or not fi.return_type.is_void():
-            # embedded instruction, the result can be assigned to something.
+        if require_void_return and (not fi.return_type or not fi.return_type.is_void()):
             print(
-                f"[Error] Cannot remove {name} as this is an embedded instruction. Is the return type correct? it should be void."
+                f"[Error] Cannot remove {name} as this is an embedded instruction. "
+                "Is the return type correct? it should be void."
             )
             return False
 
-        blk.make_nop(insn)
+        if require_discarded_return and not fi.retregs.empty():
+            return False
+
+        self.blk.make_nop(insn)
         self.count()
         return True
 
-    def id_function_to_replace_with_their_arg(self, name: str, insn: minsn_t, _blk: mblock_t) -> bool:
-        if not match(ID_FUNCTIONS_TO_REPLACE_WITH_ARG, name):
+    def void_function_to_remove(self, name: str, insn: minsn_t, blk: mblock_t) -> bool:
+        if match_func_name(VOID_FUNCTIONS_TO_REMOVE_WITH_SINGLE_ARG, name):
+            exact_arg_count = 1
+        elif match_func_name(VOID_FUNCTION_TO_REMOVE_WITH_MULTIPLE_ARGS, name):
+            exact_arg_count = None
+        else:
+            return False
+
+        return self.try_remove_call(
+            insn,
+            name=name,
+            exact_arg_count=exact_arg_count,
+            require_void_return=True,
+        )
+
+    def id_function_to_replace_with_their_arg(self, name: str, insn: minsn_t, blk: mblock_t) -> bool:
+        if not match_func_name(ID_FUNCTIONS_TO_REPLACE_WITH_ARG, name):
             return False
 
         # Might be a call with destination (for example, if it is the last statement in the function)
-        fi: mcallinfo_t = insn.d.f
-        if fi.args.empty() or fi.retregs.empty():
-            # No arguments (probably not optimized yet) or no return reg
-            return False
+        # Statement-level retain with a discarded return — remove entirely when safe.
+        if self.try_remove_call(insn, name=name, exact_arg_count=1, require_discarded_return=True):
+            return True
 
         # Make instruction mov instead of call
         insn.opcode = ida_hexrays.m_mov
+        fi: mcallinfo_t = insn.d.f
+
+        # We cannot replace function with their arg if there is no args or no return registers
+        if fi.args.empty() or fi.retregs.empty():
+            return False
         insn.l.swap(fi.args[0])
         insn.d.swap(fi.retregs[0])
         self.count()
         return True
 
     def assign_functions(self, name: str, insn: minsn_t, _blk: mblock_t) -> bool:
-        if not match(ASSIGN_FUNCTIONS, name):
+        if not match_func_name(ASSIGN_FUNCTIONS, name):
             return False
 
         fi: mcallinfo_t = insn.d.f
@@ -203,7 +253,7 @@ class insn_optimizer_t(minsn_visitor_t, CounterMixin):
         return True
 
     def set_property_functions(self, name: str, insn: minsn_t, _blk: mblock_t) -> bool:
-        if not match(SET_PROPERTY_FUNCTIONS, name):
+        if not match_func_name(SET_PROPERTY_FUNCTIONS, name):
             return False
 
         fi: mcallinfo_t = insn.d.f
