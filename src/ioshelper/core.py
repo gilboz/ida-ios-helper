@@ -4,7 +4,7 @@ import ida_kernwin
 import idaapi
 from idahelper import file_format, widgets
 
-from .base.reloadable_plugin import ComponentFactory, PluginCore, UIAction, UIActionsComponent
+from .base.reloadable_plugin import IS_DEBUG, ComponentFactory, PluginCore, UIAction, UIActionsComponent
 from .plugins.common.clang_blocks import clang_block_args_analyzer_component, clang_block_optimizer_component
 from .plugins.common.globals import globals_component
 from .plugins.common.jump_to_string import jump_to_string_component
@@ -85,7 +85,7 @@ def get_modules_for_file() -> list[ComponentFactory]:
 
 
 def shared_modules() -> list[ComponentFactory]:
-    return [
+    modules = [
         this_arg_fixer_component,
         toggle_ios_helper_mount_component,
         clang_block_args_analyzer_component,
@@ -97,6 +97,10 @@ def shared_modules() -> list[ComponentFactory]:
         show_segment_xrefs_component,
         globals_component,
     ]
+    if IS_DEBUG:
+        from ioshelper.debug import dump_ps_component
+        modules.append(dump_ps_component)
+    return modules
 
 
 def objc_plugins() -> list[ComponentFactory]:
