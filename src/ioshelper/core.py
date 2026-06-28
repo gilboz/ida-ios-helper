@@ -22,8 +22,8 @@ from .plugins.kernelcache.func_renamers import (
 from .plugins.kernelcache.generic_calls_fix import generic_calls_fix_component
 from .plugins.kernelcache.kalloc_type import apply_kalloc_type_component, create_type_from_kalloc_component
 from .plugins.kernelcache.obj_this import this_arg_fixer_component
+from .plugins.objc.objc_optimizers import component as objc_optimizers_component
 from .plugins.objc.objc_ref import objc_xrefs_component
-from .plugins.objc.objc_refcnt import component as objc_refcount_component
 from .plugins.objc.objc_sugar import objc_sugar_component
 from .plugins.objc.oslog import component as oslog_component
 from .plugins.swift.swift_dump_import import (
@@ -95,7 +95,7 @@ def shared_modules() -> list[ComponentFactory]:
         clang_block_args_analyzer_component,
         clang_block_optimizer_component,
         jump_to_string_component,
-        objc_refcount_component,
+        objc_optimizers_component,
         range_condition_optimizer_component,
         mark_outline_functions_component,
         show_segment_xrefs_component,

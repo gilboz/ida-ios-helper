@@ -11,7 +11,7 @@ Example:
 
         debug = true
         disabled_features = ["swift"]
-        disabled_components = ["SwiftStrings", "Obj-C refcount optimizer"]
+        disabled_components = ["SwiftStrings", "Obj-C optimizers"]
 """
 
 import tomllib

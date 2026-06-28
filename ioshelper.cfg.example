@@ -13,5 +13,5 @@ debug = false
 disabled_features = []
 
 # Individual components to skip, by name (finer-grained than disabled_features).
-# e.g. disabled_components = ["SwiftStrings", "Obj-C refcount optimizer"]
+# e.g. disabled_components = ["SwiftStrings", "Obj-C optimizers"]
 disabled_components = []
