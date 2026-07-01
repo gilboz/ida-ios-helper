@@ -1,10 +1,12 @@
 """Shared selector-token plumbing for the Obj-C bracket-sugar passes.
 
-`objc_msgsend` synthesizes selector name tokens for the rewritten `[recv
-sel]` message sends. This module is the single owner of what a selector token looks
-like and of the per-function registry that makes those tokens interactive:
-double-clicking one launches IDA's selector-jump action, and pressing `x` over it
-lists the selector's call sites (see `locate_selector_xrefs`).
+Both `objc_msgsend` (`objc_msgSend` calls) and `objc_opt` (the runtime
+fast-paths) synthesize selector name tokens. This module is the single owner of what
+a selector token looks like and of the per-function registry that makes those tokens
+interactive: double-clicking one launches IDA's selector-jump action, and pressing
+`x` over it lists the selector's call sites (see `locate_selector_xrefs`).
+Routing every pass through here keeps the interactivity working uniformly — that is
+why `objc_opt` selectors behave the same as `objc_msgSend` ones.
 """
 
 __all__ = [

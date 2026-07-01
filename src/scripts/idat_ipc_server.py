@@ -63,6 +63,7 @@ def _install_hooks_and_setup() -> None:
         "ioshelper.plugins.objc.objc_sugar.tokens",
         "ioshelper.plugins.objc.objc_sugar.selectors",
         "ioshelper.plugins.objc.objc_sugar.objc_sugar",
+        "ioshelper.plugins.objc.objc_sugar.objc_opt",
         "ioshelper.plugins.objc.objc_sugar.objc_msgsend",
     ):
         if modname in sys.modules:

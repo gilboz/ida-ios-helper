@@ -1,8 +1,8 @@
 """Low-level token-list utilities shared by the Obj-C bracket-sugar passes.
 
-`objc_msgsend` and `objc_sugar` both post-process the same tokenized
-pseudocode, so the call-scanning and argument-splitting primitives they need live
-here rather than being reached into across modules.
+`objc_msgsend`, `objc_opt`, and `objc_sugar` all post-process the same
+tokenized pseudocode, so the call-scanning and argument-splitting primitives they need
+live here rather than being reached into across modules.
 """
 
 __all__ = ["MAX_REWRITES", "drop_trailing_comma", "find_callee", "open_paren_after", "split_args"]

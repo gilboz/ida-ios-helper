@@ -2,8 +2,9 @@
 Pseudocode sugar that rewrites ``objc_msgSend`` calls into Obj-C bracket syntax.
 
 A Hex-Rays ``func_printed`` hook post-processes the tokenized pseudocode, rewriting
-``objc_msgSend(recv, "sel:", a, b)`` into the lighter ``[recv sel:](a, b)`` and
-folding wrapped continuation lines back together where they now fit.
+``objc_msgSend(recv, "sel:", a, b)`` into the lighter ``[recv sel:](a, b)``, doing the
+same for the Obj-C runtime fast-paths (``objc_alloc``, ``objc_opt_self``, … — see
+``objc_opt``), and folding wrapped continuation lines back together where they now fit.
 """
 
 __all__ = ["objc_msgsend_hexrays_hooks_t"]
@@ -39,27 +40,36 @@ class objc_msgsend_hexrays_hooks_t(Hexrays_Hooks):
     anchors so navigation keeps working) and only rewrites the structural tokens.
     The synthesized selector token is anchored to the selector argument's ctree
     item, so hovering it shows the selector (not the receiver); double-clicking and
-    pressing ``x`` over it are handled by ``selectors``. As a final step it also
-    merges wrapped continuation lines back together where they now fit (see
-    :func:`merge_wrapped_lines`).
+    pressing ``x`` over it are handled uniformly with the runtime fast-paths by
+    ``selectors``. As a final step it also merges wrapped continuation lines back
+    together where they now fit (see :func:`merge_wrapped_lines`).
     """
 
     def func_printed(self, cfunc: cfunc_t) -> int:
         """
-        Apply the bracket rewrite and line-merge to the just-printed pseudocode.
+        Apply the bracket rewrite, runtime-fast-path sugar, and line-merge to the pseudocode.
         """
+        # Imported lazily so a hot `reload()` always binds the freshly reloaded
+        # `objc_opt` rather than a stale reference captured at import time.
+        from .objc_opt import rewrite_opt_calls
+
         # Resolve the pseudocode once: `func_printed` may run mid-build and a second
         # `get_pseudocode()` can return a different strvec. Operate on the whole
         # function as one tagged blob so calls wrapped across lines are handled too.
         ps = cfunc.get_pseudocode()
         line = Line.parse("\n".join(ps[i].line for i in range(ps.size())))
         selectors = rewrite(line.tokens)
-        if selectors is not None:
-            register_selectors(cfunc.entry_ea, selectors)
+        opt_selectors = rewrite_opt_calls(line.tokens)
+        # Register the message-send and runtime-fast-path selectors together so
+        # double-click / `x` work uniformly across both. The two call kinds anchor to
+        # different ctree items, so their indices never collide.
+        merged_selectors = {**(selectors or {}), **(opt_selectors or {})}
+        if merged_selectors:
+            register_selectors(cfunc.entry_ea, merged_selectors)
         tagged_lines = line.to_tagged().split("\n")
         merged = merge_wrapped_lines(tagged_lines)
-        if selectors is None and len(merged) == len(tagged_lines):
-            return 0  # neither a rewrite nor a line merge changed anything
+        if not merged_selectors and len(merged) == len(tagged_lines):
+            return 0  # neither a rewrite, runtime sugar, nor line merge changed anything
         write_back(ps, merged)
         return 0
 
