@@ -1,4 +1,5 @@
-"""Long-running IPC server hosted inside `idat`.
+"""
+Long-running IPC server hosted inside `idat`.
 
 Each cold `probe_func.sh` invocation pays 30-90s for `idat` startup, IDB
 load, auto-analysis, and plugin imports. When iterating on the plugin
@@ -36,19 +37,25 @@ import idc
 DEFAULT_SOCK_PATH = os.environ.get("IOSHELPER_IDAT_SOCK", "/tmp/ioshelper-idat.sock")  # noqa: S108
 
 
-# Keep references to instantiated hooks alive so they don't get GC'd.
+# Keep references to instantiated hooks / optimizers alive so they don't get GC'd.
 _LIVE_HOOKS: list = []
+_LIVE_OPTIMIZERS: list = []
 
 
-def _install_hooks_and_setup() -> None:
-    """Unhook any existing hooks, re-import the plugin modules, install
+def _install_hooks_and_setup() -> None:  # noqa: C901
+    """
+    Unhook any existing hooks, re-import the plugin modules, install
     fresh hook instances, and run `fix_swift_types()`. Safe to call
     repeatedly — that's the whole point of the `reload` command."""
-    global _LIVE_HOOKS
+    global _LIVE_HOOKS, _LIVE_OPTIMIZERS
     for h in _LIVE_HOOKS:
         with contextlib.suppress(Exception):
             h.unhook()
     _LIVE_HOOKS = []
+    for o in _LIVE_OPTIMIZERS:
+        with contextlib.suppress(Exception):
+            o.remove()
+    _LIVE_OPTIMIZERS = []
 
     here = os.path.dirname(os.path.abspath(__file__))
     repo_src = os.path.normpath(os.path.join(here, ".."))
@@ -65,6 +72,7 @@ def _install_hooks_and_setup() -> None:
         "ioshelper.plugins.objc.objc_sugar.objc_sugar",
         "ioshelper.plugins.objc.objc_sugar.objc_opt",
         "ioshelper.plugins.objc.objc_sugar.objc_msgsend",
+        "ioshelper.plugins.objc.objc_msgsend_args.optimizer",
     ):
         if modname in sys.modules:
             try:
@@ -74,6 +82,9 @@ def _install_hooks_and_setup() -> None:
         else:
             __import__(modname)
 
+    from ioshelper.base.config import Config
+    from ioshelper.plugins.objc.objc_msgsend_args import OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME
+    from ioshelper.plugins.objc.objc_msgsend_args.optimizer import objc_msgsend_argcount_optimizer_t
     from ioshelper.plugins.objc.objc_sugar.objc_msgsend import objc_msgsend_hexrays_hooks_t
     from ioshelper.plugins.objc.objc_sugar.objc_sugar import objc_selector_hexrays_hooks_t
     from ioshelper.plugins.swift.swift_oslog.log_hook import SwiftLogRewriteHook
@@ -94,6 +105,27 @@ def _install_hooks_and_setup() -> None:
             _LIVE_HOOKS.append(h)
         except Exception as exc:
             print(f"[ipc] install {cls.__name__}: {exc!r}")
+    # Microcode optimizers: headless `idat` doesn't auto-install the plugin's
+    # `optinsn_t`/`optblock_t` optimizers, so instantiate the ones whose output the
+    # probe needs to reflect. `objc_msgsend_argcount` (trims over-counted msgSend args)
+    # is experimental/WIP, so gate it on the same opt-in flag as `core.objc_plugins`.
+    # Re-read the config on every reload so toggling the flag doesn't need a restart.
+    config = Config.load()
+    optimizers: list = []
+    if config.is_experimental_enabled(OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME):
+        optimizers.append(objc_msgsend_argcount_optimizer_t)
+    else:
+        print(
+            f"[ipc] skipping experimental optimizer {OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME!r}"
+            " (enable via experimental_components in ioshelper.cfg)"
+        )
+    for opt_cls in optimizers:
+        try:
+            o = opt_cls()
+            o.install()
+            _LIVE_OPTIMIZERS.append(o)
+        except Exception as exc:
+            print(f"[ipc] install {opt_cls.__name__}: {exc!r}")
     try:
         fix_swift_types()
     except Exception as exc:
@@ -113,7 +145,8 @@ def _coerce_ea(ea) -> int:
 
 
 def _decompile(ea_raw, sections: list[str] | None = None, passes: int = 3) -> str:
-    """Decompile `ea` and return the requested sections joined with `\\n`.
+    """
+    Decompile `ea` and return the requested sections joined with `\\n`.
     Defaults to 3 passes — the maturity hook applies types during pass 1's
     decompile, the post-print invalidation fires after pass 2's storage,
     and pass 3 sees the fully-typed prototype in the rendered header.
@@ -152,7 +185,8 @@ def _decompile(ea_raw, sections: list[str] | None = None, passes: int = 3) -> st
 
 
 def _eval_code(code: str):
-    """Run `code` in a namespace that has common IDA modules pre-imported.
+    """
+    Run `code` in a namespace that has common IDA modules pre-imported.
     Tries `eval` first (for one-liners); falls back to `exec` (which
     supports statements, multi-line, imports). `exec` returns None — to
     surface a value, assign to `_` and the caller will print it."""

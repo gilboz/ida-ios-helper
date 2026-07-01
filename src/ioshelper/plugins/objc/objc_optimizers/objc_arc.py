@@ -37,10 +37,11 @@ class _ArcInsnVisitor(CallInsnVisitor):
 
 
 class objc_arc_optimizer_t(CallOptimizer):
-    """Fold the canonical ARC retain/release/autorelease/claim helpers into mov/nop.
+    """
+    Fold the canonical ARC retain/release/autorelease/claim helpers into mov/nop.
 
     This is exactly the set IDA 9.4's built-in "hide Obj-C ARC calls" feature handles, so it is
-    skipped on IDA >= 9.4 (see this package's ``__init__``).
+    skipped on IDA >= 9.4 (see this package's `__init__`).
     """
 
     mop_visitor_cls = _ArcMopVisitor

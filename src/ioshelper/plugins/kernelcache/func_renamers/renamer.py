@@ -191,9 +191,7 @@ class FuncHandler(abc.ABC):
         index: int,
         new_type: tinfo_t | Callable[[Call], tinfo_t | None] | None,
     ):
-        """
-        Retype the parameter at index {index}
-        """
+        """Retype the parameter at index {index}"""
         if index >= len(call.params):
             print(f"Call {call} has only {len(call.params)} parameters, tried to access {index}")
             return

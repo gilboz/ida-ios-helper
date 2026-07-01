@@ -6,6 +6,7 @@ import idaapi
 from ida_kernwin import action_handler_t
 
 from ioshelper.base.reloadable_plugin import UIAction, UIActionsComponent
+
 from .dump_pseudocode import dump_ps
 
 ACTION_ID = "ioshelper:dump_debug_pseudocode"

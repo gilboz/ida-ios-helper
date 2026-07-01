@@ -1,4 +1,5 @@
-"""Run `ipsw swift-dump` against the current IDB's input file and apply:
+"""
+Run `ipsw swift-dump` against the current IDB's input file and apply:
 
 1. Synthesize an IDA struct for every Swift class with fields (header = isa +
    refcount + ...fields). Best-effort field typing via swift_types_map.
@@ -40,7 +41,8 @@ def _safe(s: str) -> str:
 
 
 def _ida_arch_for_ipsw() -> str | None:
-    """Map IDA's processor/file-format to an ipsw `--arch` value so universal
+    """
+    Map IDA's processor/file-format to an ipsw `--arch` value so universal
     Mach-Os don't trigger ipsw's interactive `select an architecture` prompt
     (which a subprocess call can't answer). Returns None when not arm64-ish —
     let ipsw decide in that case."""
@@ -65,7 +67,8 @@ def _run_swift_dump(ipsw: str, binary: str) -> str:
 
 
 def _resolve_relative_pointer(slot_ea: int) -> int | None:
-    """Swift relative-pointer at `slot_ea`:
+    """
+    Swift relative-pointer at `slot_ea`:
     body = (slot + 4) + sext32(qword[slot] >> 32)
     Returns None if the offset is 0 (truly stripped) or the target isn't a function."""
     val = ida_bytes.get_qword(slot_ea)
@@ -88,7 +91,8 @@ def _parses_as_decl(ctype: str) -> bool:
 
 
 def _ensure_class_struct(decl: TypeDecl) -> str | None:
-    """Create (or re-create) an IDA struct for a Swift class with field info.
+    """
+    Create (or re-create) an IDA struct for a Swift class with field info.
     Returns the struct's safe name, or None if we declined to synthesize it.
 
     Each field's C type is validated against IDA's type system; if it doesn't

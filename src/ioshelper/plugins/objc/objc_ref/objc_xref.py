@@ -32,9 +32,7 @@ class Xref:
 
 
 def module_for_ea(ea: int) -> str:
-    """
-    Return the owning module (dyld_shared_cache) or section name for an address.
-    """
+    """Return the owning module (dyld_shared_cache) or section name for an address."""
     seg = segments.get_segment_by_ea(ea)
     return seg.base_name if seg is not None else "<unknown>"
 
@@ -56,16 +54,12 @@ def get_name_for_ea(ea: int) -> str:
 
 
 def strip_ida_duplicate_suffix(s: str) -> str:
-    """
-    Strip IDA's duplicate-name suffix: foo_0 / foo_1 / foo_123 -> foo.
-    """
+    """Strip IDA's duplicate-name suffix: foo_0 / foo_1 / foo_123 -> foo."""
     return re.sub(r"_\d+$", "", s)
 
 
 def normalize_selector(s: str) -> str:
-    """
-    Canonical key used for matching: foo:bar: -> foo_bar_ ; foo_bar__0 -> foo_bar_.
-    """
+    """Canonical key used for matching: foo:bar: -> foo_bar_ ; foo_bar__0 -> foo_bar_."""
     if not s:
         return ""
 
@@ -100,9 +94,7 @@ def build_stub_cache() -> dict[str, list[tuple[int, str]]]:
 
 
 def refresh_selector_stub_cache() -> None:
-    """
-    Rebuild the stub index. Call this after re-running the stub renamer.
-    """
+    """Rebuild the stub index. Call this after re-running the stub renamer."""
     global _STUB_CACHE
 
     _STUB_CACHE = build_stub_cache()
@@ -111,9 +103,7 @@ def refresh_selector_stub_cache() -> None:
 
 
 def find_stubs_for_selector(selector: str) -> list[tuple[int, str]]:
-    """
-    Return sorted [(stub_ea, stub_name), ...] matching ``selector``.
-    """
+    """Return sorted [(stub_ea, stub_name), ...] matching `selector`."""
     global _STUB_CACHE
 
     if _STUB_CACHE is None:

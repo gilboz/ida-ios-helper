@@ -1,4 +1,5 @@
-"""Headless IDA probe: dump everything about a function that's useful when
+"""
+Headless IDA probe: dump everything about a function that's useful when
 iterating on a hex-rays plugin — pseudocode, lvars, ctree AST, and microcode
 at multiple maturities — so the loop can be driven from a shell without a
 human staring at IDA's GUI.
@@ -261,7 +262,8 @@ _LIVE_HOOKS: list = []
 
 
 def _install_ioshelper_hooks() -> None:
-    """Headless idat skips installing Hexrays_Hooks subclasses that the plugin
+    """
+    Headless idat skips installing Hexrays_Hooks subclasses that the plugin
     registers, so we instantiate + `.hook()` each one ourselves. Easier than
     teaching reloadable_plugin to also run in headless mode."""
     import os

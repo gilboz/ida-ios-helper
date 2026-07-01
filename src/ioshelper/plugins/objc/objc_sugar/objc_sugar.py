@@ -1,8 +1,8 @@
 """
 Pseudocode sugar that strips redundant selector/class arguments from Obj-C calls.
 
-A Hex-Rays ``func_printed`` hook deletes the selector-string argument (and, for class
-methods, the ``&OBJC_CLASS___…`` receiver) that merely echo an already-rendered Obj-C
+A Hex-Rays `func_printed` hook deletes the selector-string argument (and, for class
+methods, the `&OBJC_CLASS___…` receiver) that merely echo an already-rendered Obj-C
 method name, collapsing any line left holding only closers back into the call above.
 """
 
@@ -16,7 +16,7 @@ from idahelper.pseudocode import Anchor, Color, Line, Pseudocode, Section, Token
 
 from .tokens import drop_trailing_comma
 
-# Object-C class refs are rendered as ``OBJC_CLASS___<Name>``.
+# Object-C class refs are rendered as `OBJC_CLASS___<Name>`.
 OBJC_CLASS_PREFIX = "OBJC_CLASS___"
 # Visible characters a line may consist of (besides whitespace) and still be merged
 # upward after its selector/class argument was removed — closers and separators.
@@ -27,16 +27,14 @@ class objc_selector_hexrays_hooks_t(Hexrays_Hooks):
     """
     Strip the redundant selector/class arguments from rendered Obj-C method calls.
 
-    When IDA prints an Obj-C method call such as ``-[Foo bar:](recv, "bar:", x)``, the
-    selector string (and, for class methods, the ``&OBJC_CLASS___Foo`` receiver) just
-    echoes the method name. This ``func_printed`` hook deletes those tokens from the
-    tokenized pseudocode, leaving the cleaner ``-[Foo bar:](recv, x)``.
+    When IDA prints an Obj-C method call such as `-[Foo bar:](recv, "bar:", x)`, the
+    selector string (and, for class methods, the `&OBJC_CLASS___Foo` receiver) just
+    echoes the method name. This `func_printed` hook deletes those tokens from the
+    tokenized pseudocode, leaving the cleaner `-[Foo bar:](recv, x)`.
     """
 
     def func_printed(self, cfunc: cfunc_t) -> int:  # noqa: C901
-        """
-        Collect the redundant selector/class arguments and strip them from the text.
-        """
+        """Collect the redundant selector/class arguments and strip them from the text."""
         selectors_to_remove: dict[int, str] = {}  # obj_id -> selector
         classes_to_remove: set[int] = set()  # obj_id
         index_to_sel: dict[int, str] = {}  # index, selector
@@ -95,9 +93,9 @@ def modify_text(cfunc: cfunc_t, index_to_sel: dict[int, str], class_indices_to_r
     Remove the redundant selector/class arguments from the rendered pseudocode.
 
     Each code line is parsed into colored tokens; the argument tokens whose ctree
-    anchor matches ``index_to_sel`` / ``class_indices_to_remove`` are deleted along
+    anchor matches `index_to_sel` / `class_indices_to_remove` are deleted along
     with their separating comma. A line that is left empty is dropped, and a line
-    left holding only closers (e.g. ``));``) is merged up into the nearest
+    left holding only closers (e.g. `));`) is merged up into the nearest
     surviving line — so a wrapped call collapses back to balanced text.
     """
     if not index_to_sel and not class_indices_to_remove:
@@ -123,7 +121,9 @@ def modify_text(cfunc: cfunc_t, index_to_sel: dict[int, str], class_indices_to_r
         stripped = line.text.strip()
         if not stripped:
             to_erase.append(i)
-        elif survivors and all(ch in CLOSER_CHARS for ch in stripped):
+        elif survivors and all(ch in CLOSER_CHARS for ch in stripped if not ch.isspace()):
+            # Closers-only line (whitespace ignored, so a wrapped tail like `) )`
+            # still merges up — that path drops the now-orphaned trailing comma).
             target = survivors[-1]
             _merge_into(pc.lines[target], line)
             dirty.add(target)
@@ -142,17 +142,17 @@ def modify_text(cfunc: cfunc_t, index_to_sel: dict[int, str], class_indices_to_r
 
 def _remove_objc_args(line: Line, index_to_sel: dict[int, str], class_indices_to_remove: set[int]) -> bool:
     """
-    Delete matching selector/class argument tokens from ``line``.
+    Delete matching selector/class argument tokens from `line`.
 
     Args:
         line: The parsed pseudocode line, mutated in place.
         index_to_sel: Selector ctree-item index -> selector string; matched entries
             are consumed.
-        class_indices_to_remove: ``&OBJC_CLASS___`` ref indices to strip; matched
+        class_indices_to_remove: `&OBJC_CLASS___` ref indices to strip; matched
             entries are consumed.
 
     Returns:
-        Whether any token was removed from ``line``.
+        Whether any token was removed from `line`.
     """
     tokens = line.tokens
     owners = _owning_anchors(tokens)
@@ -180,9 +180,7 @@ def _remove_objc_args(line: Line, index_to_sel: dict[int, str], class_indices_to
 
 
 def _owning_anchors(tokens: list[Token]) -> list[Anchor | None]:
-    """
-    For each token, the nearest anchor at or before it (the ctree item it belongs to).
-    """
+    """For each token, the nearest anchor at or before it (the ctree item it belongs to)."""
     owners: list[Anchor | None] = []
     active: Anchor | None = None
     for token in tokens:
@@ -193,9 +191,7 @@ def _owning_anchors(tokens: list[Token]) -> list[Anchor | None]:
 
 
 def _mark_selector(tokens: list[Token], value: int, index: int, to_delete: set[int]) -> None:
-    """
-    Mark a selector string token, its anchors / opening quote, and a separating comma.
-    """
+    """Mark a selector string token, its anchors / opening quote, and a separating comma."""
     to_delete.add(value)
     start = value
     while start > 0 and _is_selector_head(tokens[start - 1], index):
@@ -205,9 +201,7 @@ def _mark_selector(tokens: list[Token], value: int, index: int, to_delete: set[i
 
 
 def _mark_class(tokens: list[Token], value: int, obj_index: int, to_delete: set[int]) -> None:
-    """
-    Mark an ``OBJC_CLASS___`` token, its ``&`` ref / anchors, and a separating comma.
-    """
+    """Mark an `OBJC_CLASS___` token, its `&` ref / anchors, and a separating comma."""
     to_delete.add(value)
     start = value
     while start > 0 and _is_class_head(tokens[start - 1], obj_index):
@@ -217,60 +211,88 @@ def _mark_class(tokens: list[Token], value: int, obj_index: int, to_delete: set[
 
 
 def _is_selector_head(token: Token, index: int) -> bool:
-    """
-    A token that precedes the selector string and belongs to it (its anchor or opening quote).
-    """
+    """A token that precedes the selector string and belongs to it (its anchor or opening quote)."""
     if token.anchor is not None:
         return token.anchor.index == index
     return token.is_symbol('"')
 
 
 def _is_class_head(token: Token, obj_index: int) -> bool:
-    """
-    A token that precedes the ``OBJC_CLASS___`` name and belongs to it (its anchors or the ``&``).
-    """
+    """A token that precedes the `OBJC_CLASS___` name and belongs to it (its anchors or the `&`)."""
     if token.anchor is not None:
         return token.anchor.index in (obj_index, obj_index - 1)
     return token.is_symbol("&")
 
 
+def _is_inlay_decoration(token: Token) -> bool:
+    """
+    Whether `token` is part of an IDA 9.4 inlay-hint prefix decorating an argument.
+
+    IDA 9.4 renders argument-name hints inline as `name: value`. On the wire a hint
+    is an `AUTOCMT`-colored `name:` label wrapped in invisible `ITP` position
+    anchors, inserted *between* an argument's separating comma and the argument value.
+    The selector/class stripper must skip (and delete) that decoration to reach the
+    real comma, otherwise it strips the argument but leaves a dangling `,`.
+
+    Returns:
+        Whether `token` is an anchor mark or an `AUTOCMT` hint label (the pieces of
+        an inlay-hint prefix). Blanks are handled separately by the callers.
+    """
+    if token.anchor is not None:
+        return True
+    return token.color == Color.AUTOCMT
+
+
 def _mark_comma(tokens: list[Token], start: int, end: int, to_delete: set[int]) -> None:
     """
-    Mark the comma separating the argument spanning ``[start, end]`` from its siblings.
+    Mark the comma separating the argument spanning `[start, end]` from its siblings.
 
-    Prefers the trailing comma (``arg, …``); falls back to the leading comma when the
-    argument is last (``…, arg``). The accompanying space is removed with the comma.
+    Prefers the trailing comma (`arg, …`); falls back to the leading comma when the
+    argument is last (`…, arg`). The accompanying space is removed with the comma.
+
+    An argument's leading inlay-hint prefix (`name:` label plus `ITP` anchors that
+    IDA 9.4 inserts before the value, see `_is_inlay_decoration`) is removed too,
+    so the hint never outlives the argument it labeled or hides the separating comma.
     """
+    # The decoration between this argument and its preceding separator (',' or '(').
+    before = start - 1
+    prefix: list[int] = []
+    while before >= 0 and (tokens[before].is_blank or _is_inlay_decoration(tokens[before])):
+        prefix.append(before)
+        before -= 1
+
     after = end + 1
     if after < len(tokens) and tokens[after].is_symbol(","):
+        # Trailing comma: drop it (with one trailing space) and this argument's own
+        # inlay prefix — but keep the blank right after the preceding separator so the
+        # surviving `arg, arg` spacing is unchanged.
         to_delete.add(after)
         if after + 1 < len(tokens) and tokens[after + 1].is_blank:
             to_delete.add(after + 1)
+        keep = (
+            prefix[-1]
+            if (prefix and before >= 0 and tokens[before].is_symbol(",") and tokens[prefix[-1]].is_blank)
+            else None
+        )
+        to_delete.update(i for i in prefix if i != keep)
         return
 
-    before = start - 1
-    space = None
-    if before >= 0 and tokens[before].is_blank:
-        space, before = before, before - 1
+    # Leading comma (the argument is last): drop the comma plus all the decoration
+    # between it and the value.
     if before >= 0 and tokens[before].is_symbol(","):
         to_delete.add(before)
-        if space is not None:
-            to_delete.add(space)
+        to_delete.update(prefix)
 
 
 def _merge_into(target: Line, source: Line) -> None:
-    """
-    Append ``source``'s closers to ``target``, dropping a now-dangling trailing comma.
-    """
+    """Append `source`'s closers to `target`, dropping a now-dangling trailing comma."""
     if target.text.rstrip().endswith(","):
         drop_trailing_comma(target.tokens)
     target.tokens.extend(_lstrip_tokens(source.tokens))
 
 
 def _lstrip_tokens(tokens: list[Token]) -> list[Token]:
-    """
-    Drop leading indentation and position anchors so merged closers sit flush.
-    """
+    """Drop leading indentation and position anchors so merged closers sit flush."""
     i = 0
     while i < len(tokens) and (tokens[i].anchor is not None or tokens[i].is_blank):
         i += 1

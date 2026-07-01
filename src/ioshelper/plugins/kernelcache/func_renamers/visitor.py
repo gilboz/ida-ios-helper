@@ -246,9 +246,7 @@ class StaticCallExtractorVisitor(extended_microcode_visitor_t):
 
 
 def _try_extract_assignee(parents: list[mop_t | minsn_t]) -> mop_t | None:
-    """
-    Try to extract the assignee from the parents of the call.
-    """
+    """Try to extract the assignee from the parents of the call."""
     if not parents:
         # Direct call instruction, no assignee
         return None

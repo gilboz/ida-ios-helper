@@ -1,4 +1,5 @@
-"""AST-level Swift os_log recognizer.
+"""
+AST-level Swift os_log recognizer.
 
 By the time hex-rays reaches `CMAT_FINAL` the cfunc has resolved everything the
 microcode optimizer choked on: `_swift_slowAlloc` shows up as a real call (not
@@ -62,7 +63,8 @@ def _lvar_idx_of(expr) -> int | None:
 
 
 def _decode_buf_write(target) -> tuple[int, int, int] | None:
-    """If `target` is `*((TY*)buf + OFF)` or `*buf`, return (buf_lvar_idx, byte_offset, size).
+    """
+    If `target` is `*((TY*)buf + OFF)` or `*buf`, return (buf_lvar_idx, byte_offset, size).
     Returns None if it doesn't match."""
     if target.op != ida_hexrays.cot_ptr:
         return None
@@ -88,7 +90,8 @@ def _decode_buf_write(target) -> tuple[int, int, int] | None:
 
 
 class _Detector(ida_hexrays.ctree_visitor_t):
-    """Single AST sweep that collects everything we need to recognize each
+    """
+    Single AST sweep that collects everything we need to recognize each
     `_os_log_impl` call: the call expressions themselves, every assignment to
     each lvar, every write through a pointer-shaped lvar, and which lvars hold
     `static os_log_type_t.<X>.getter` results. Also records the *containing*
@@ -214,7 +217,8 @@ def _resolve_log_type(type_arg, log_type_lvars: dict) -> int | None:
 
 
 def _parse_buffer(writes: list, expected_size: int) -> tuple[list, list] | None:  # noqa: C901
-    """Apply the os_log buffer state machine to a sorted-by-offset list of
+    """
+    Apply the os_log buffer state machine to a sorted-by-offset list of
     writes. Returns (values, write_insns) where values is the list of value
     cexprs (one per item) and write_insns is every containing cinsn_t along
     the way (so we can nop them later). None if the buffer shape doesn't match.
@@ -257,7 +261,8 @@ def _parse_buffer(writes: list, expected_size: int) -> tuple[list, list] | None:
 
 
 def _render_expr(expr, lvars, depth: int = 0) -> str:  # noqa: C901
-    """Best-effort text rendering of a cexpr_t for use in inline comments.
+    """
+    Best-effort text rendering of a cexpr_t for use in inline comments.
     Preserves casts on the way down — stripping them silently turns
     `*((_QWORD *)v141 + 2)` (offset +16 bytes) into the misleading
     `*(v141 + 2)`.
@@ -406,7 +411,8 @@ def _process_call(cfunc, call_expr, info: LogCallInfo, detector: _Detector, call
 
 
 def _collect_aux_buffer_insns(detector: _Detector, log_buf_idx: int, call_insn) -> list:  # noqa: C901
-    """Find auxiliary `swift_slowAlloc` buffers whose lifecycle brackets the
+    """
+    Find auxiliary `swift_slowAlloc` buffers whose lifecycle brackets the
     log call (alloc before, dealloc after) and whose every use looks like
     lifecycle plumbing — cast/alias assignments, or standalone calls whose
     only var arg is the buffer lvar. Returns the cinsn_t list to nop.
@@ -452,7 +458,8 @@ def _collect_aux_buffer_insns(detector: _Detector, log_buf_idx: int, call_insn) 
 
 
 def _is_lifecycle_shaped(cinsn, lvar_idx: int) -> bool:
-    """True if `cinsn` is shaped like buffer lifecycle plumbing on `lvar_idx`:
+    """
+    True if `cinsn` is shaped like buffer lifecycle plumbing on `lvar_idx`:
         * a standalone call statement (no captured result) — `sub_xxx(v163)`
         * an alias assignment — `tmp = (cast)v163`
     Anything that captures a meaningful result back into a separate lvar is
@@ -474,7 +481,8 @@ def _is_lifecycle_shaped(cinsn, lvar_idx: int) -> bool:
 
 
 def _find_dealloc(detector: _Detector, buf_idx: int):
-    """Locate the `swift_slowDealloc` cinsn for `buf_idx`, chasing through
+    """
+    Locate the `swift_slowDealloc` cinsn for `buf_idx`, chasing through
     any `tmp = buf` alias assignment hex-rays may have introduced (and
     returning that alias-assignment cinsn too so we can erase it).
     Returns (dealloc_insn, alias_insn) — either may be None.
@@ -495,7 +503,8 @@ def _find_dealloc(detector: _Detector, buf_idx: int):
 
 
 def _helper_func_tinfo() -> "ida_typeinf.tinfo_t | None":
-    """Build the `void f(char *fmt, ...)` function tinfo that the synthetic
+    """
+    Build the `void f(char *fmt, ...)` function tinfo that the synthetic
     helper call needs. Same shape as the ObjC log_macro_optimizer uses."""
     return tif.from_func_components(
         "void",
@@ -511,7 +520,8 @@ def _collapse_to_helper_call(
     log_type_name: str,
     is_signpost: bool,
 ) -> bool:
-    """Replace the alloc statement with `os_log_<level>(fmt, args)` and erase
+    """
+    Replace the alloc statement with `os_log_<level>(fmt, args)` and erase
     the `_os_log_impl(...)` statement entirely. Builds a function tinfo for
     the synthetic helper and matches per-arg tinfos so hex-rays' downstream
     invariant checks pass.
@@ -582,7 +592,8 @@ def _collapse_to_helper_call(
 
 
 def _try_nop_fluff(alloc_insn, write_insns: list, dealloc_insn) -> None:
-    """Convert the alloc/buffer-write/dealloc statements into `cit_empty` so
+    """
+    Convert the alloc/buffer-write/dealloc statements into `cit_empty` so
     they disappear from the printed pseudocode. cinsn_t mutation is a different
     SWIG code path from cexpr_t and tends to be allowed at CMAT_FINAL — but
     wrap in try/except so a regression silently degrades to the comment-only
@@ -666,7 +677,8 @@ def _rename_lvars(  # noqa: C901
 
 
 def _try_above_comment(cfunc, ea: int, text: str) -> bool:
-    """Attempt to place a comment above the statement at `ea`. Tries the
+    """
+    Attempt to place a comment above the statement at `ea`. Tries the
     block-anchored ITPs that idahelper's helper doesn't reach, settling on
     whichever doesn't trigger orphan-comment warnings. Also clears any
     pre-existing trailing comment at the same ea so prior runs' placements
@@ -710,7 +722,8 @@ def _try_above_comment(cfunc, ea: int, text: str) -> bool:
 def _attach_summary_comment(
     cfunc, call_expr, log_type_name: str, format_str: str, values: list, is_signpost: bool
 ) -> None:
-    """Place a one-line summary comment at the log call site so the buffer
+    """
+    Place a one-line summary comment at the log call site so the buffer
     plumbing above can be skimmed at a glance. Tries to place ABOVE the
     statement (ITP_BLOCK1) before falling back to the trailing-comment
     placements (ITP_SEMI..ITP_COLON) used by `idahelper.comments`."""
@@ -731,7 +744,8 @@ def _attach_summary_comment(
 
 
 class SwiftLogRewriteHook(ida_hexrays.Hexrays_Hooks):
-    """Recognize Swift `_os_log_impl` patterns at CMAT_FINAL and rename the
+    """
+    Recognize Swift `_os_log_impl` patterns at CMAT_FINAL and rename the
     buf + arg + logger + log-type lvars to readable names, plus attach a
     `// os_log_<level>("fmt", args…)` summary comment at the call site.
 
@@ -762,7 +776,8 @@ class SwiftLogRewriteHook(ida_hexrays.Hexrays_Hooks):
 
 
 def _purge_empty_statements(cfunc) -> None:
-    """Remove `cit_empty` children from every `cit_block` in the cfunc — the
+    """
+    Remove `cit_empty` children from every `cit_block` in the cfunc — the
     leftovers of nop'd alloc/write/dealloc lines. Tries common SWIG-bound
     container methods (`erase`, `pop`); silently skips if none work."""
 
@@ -787,7 +802,8 @@ def _purge_empty_statements(cfunc) -> None:
 
 
 def _erase_at(block, idx: int) -> None:
-    """Best-effort erase block[idx]. cblock_t's removal API is finicky across
+    """
+    Best-effort erase block[idx]. cblock_t's removal API is finicky across
     IDA versions; try `erase(idx)`, fall back to iterator-based removal."""
     try:
         block.erase(idx)

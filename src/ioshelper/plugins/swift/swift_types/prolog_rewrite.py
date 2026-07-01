@@ -1,4 +1,5 @@
-"""Recognize the canonical Swift opaque-storage function prolog and rename
+"""
+Recognize the canonical Swift opaque-storage function prolog and rename
 the auto-generated `vN` lvars to meaningful names.
 
 The compiler emits, for every opaquely-sized value the function allocates on
@@ -31,7 +32,8 @@ _TYPE_METADATA_ACCESSOR_PREFIX = "type metadata accessor for "
 
 
 def _candidate_demangles(ea: int) -> list[str]:
-    """All plausible demangled forms of the symbol at `ea` — Swift's metadata-accessor
+    """
+    All plausible demangled forms of the symbol at `ea` — Swift's metadata-accessor
     string can appear under any of IDA's demangle flavors, and Mach-O stub names
     often carry a `j_` prefix that confuses `idc.demangle_name`."""
     out: list[str] = []
@@ -82,7 +84,8 @@ def _strip_casts(expr):
 
 
 class _PrologPatternScanner(ida_hexrays.ctree_visitor_t):
-    """Collect:
+    """
+    Collect:
     md_lvars[idx]  = <bare Swift type name>   from   v = type_metadata_accessor_for_X(...)
     vwt_lvars[idx] = <bare Swift type name>   from   v = *(md_lvar - N)
     """
@@ -127,7 +130,8 @@ class _PrologPatternScanner(ida_hexrays.ctree_visitor_t):
 
 
 def _apply_prolog_rewrites(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
-    """Walk the cfunc once, then mutate each detected md/vwt lvar in-place.
+    """
+    Walk the cfunc once, then mutate each detected md/vwt lvar in-place.
 
     `lvar.name = "..."` works (qstring has a SWIG setter) but `lvar.type = tif`
     is a no-op — `type` is bound as a getter method, so assigning to it just
@@ -230,7 +234,8 @@ def _is_aligned_alloca(expr) -> bool:
 
 
 def _count_lvar_uses(cfunc: ida_hexrays.cfunc_t) -> dict[int, int]:
-    """Count every cot_var read of every lvar across the function — used by
+    """
+    Count every cot_var read of every lvar across the function — used by
     `_erase_unused_stack_allocations` to find prolog-allocated buffers that
     aren't actually referenced anywhere downstream.
 
@@ -253,7 +258,8 @@ def _count_lvar_uses(cfunc: ida_hexrays.cfunc_t) -> dict[int, int]:
 
 
 def _erase_unused_stack_allocations(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
-    """Nop `vN = (cast)<base> - <size>` statements whose LHS lvar is written
+    """
+    Nop `vN = (cast)<base> - <size>` statements whose LHS lvar is written
     but never read. These are prolog stack-offset computations the compiler
     materialized for buffers that downstream optimizations eliminated all
     uses of — they survive in the pseudocode as pure noise.
@@ -305,7 +311,8 @@ def _erase_unused_stack_allocations(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa:
 
 
 def _rename_swift_error_lvars(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
-    """Find lvars that capture the live-out X21 from a `__spoils<X21>` call
+    """
+    Find lvars that capture the live-out X21 from a `__spoils<X21>` call
     (i.e. a Swift `throws` function we tagged) and rename them to `error`.
 
     By CMAT_FINAL, hex-rays has spilled x21 out of its physical register into
@@ -374,7 +381,8 @@ def _rename_swift_error_lvars(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
 
 
 def _is_swift_throws_call_stmt(stmt) -> bool:
-    """True if `stmt` is `cit_expr` whose top-level call is to a function whose
+    """
+    True if `stmt` is `cit_expr` whose top-level call is to a function whose
     prototype includes `__spoils<…X21…>` — i.e. one we marked as Swift-throws."""
     if stmt.op != ida_hexrays.cit_expr:
         return False
@@ -396,7 +404,8 @@ def _is_swift_throws_call_stmt(stmt) -> bool:
 
 
 def _erase_chkstk_calls(cfunc: ida_hexrays.cfunc_t) -> int:
-    """Nop every `__chkstk_darwin(...)` call statement in the function.
+    """
+    Nop every `__chkstk_darwin(...)` call statement in the function.
 
     `__chkstk_darwin` is a runtime stack-grow safety primitive that the
     compiler emits before each large alloca. Its presence in the pseudo is
@@ -432,7 +441,8 @@ def _erase_chkstk_calls(cfunc: ida_hexrays.cfunc_t) -> int:
 
 
 def _purge_empty_statements(cfunc: ida_hexrays.cfunc_t) -> None:
-    """Walk every `cit_block` and erase its `cit_empty` children. Without this,
+    """
+    Walk every `cit_block` and erase its `cit_empty` children. Without this,
     nop'd statements show up as bare `;` lines in the pseudo."""
 
     class V(ida_hexrays.ctree_visitor_t):
@@ -464,7 +474,8 @@ def _purge_empty_statements(cfunc: ida_hexrays.cfunc_t) -> None:
 
 
 def _apply_buf_rewrites(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
-    """At CMAT_FINAL, walk the top-level block in source order. After every
+    """
+    At CMAT_FINAL, walk the top-level block in source order. After every
     `__chkstk_darwin(<vwt>->size)` statement, the immediately-following aligned
     alloca `buf = (cast)sp - ((size + 15) & ~0xFLL)` is the opaque-storage slot
     for that type — rename the LHS lvar to `<Type>_buf`.
@@ -532,7 +543,8 @@ def _mark_cfunc_dirty(ea: int) -> None:
 
 
 def _flush_cfunc(ea: int) -> None:
-    """Invalidate the cached cfunc for `ea` so the next decompile rebuilds
+    """
+    Invalidate the cached cfunc for `ea` so the next decompile rebuilds
     against the now-current prototype. Do NOT use `clear_cached_cfuncs` — it
     nukes the entire cfunc cache, and the next decompile re-triggers our
     hooks, which can flush again, cascading into a decompile loop on binaries
@@ -541,7 +553,8 @@ def _flush_cfunc(ea: int) -> None:
 
 
 def _detect_swift_dynamic_alloca_size(func: ida_funcs.func_t) -> int:
-    """Total bytes the function allocates dynamically on the stack via Swift's
+    """
+    Total bytes the function allocates dynamically on the stack via Swift's
     `mov xN, sp; sub xM, xN, #K; mov sp, xM` idiom (the alloca pattern that
     closure contexts for `dispatch_queue.sync(execute:)` and similar APIs
     use). Returns 0 if no dynamic allocas detected."""
@@ -575,7 +588,8 @@ def _detect_swift_dynamic_alloca_size(func: ida_funcs.func_t) -> int:
 
 
 def _expand_frame_for_swift_dynamic_allocas(func: ida_funcs.func_t) -> bool:
-    """Grow `func`'s static frame to include Swift dynamic-alloca regions so
+    """
+    Grow `func`'s static frame to include Swift dynamic-alloca regions so
     hex-rays renders closure contexts (e.g. for `dispatch_queue.sync(execute:)`)
     as proper local variables rather than negative offsets like `&v24[-48]`.
 
@@ -627,7 +641,8 @@ _CLOSURE_CTX_NAME_PREFIX = "ClosureCtx_"
 
 
 def _is_closure_taking_call(call_expr) -> tuple[int, int] | None:
-    """If `call_expr` calls a known closure-taking Swift API, return
+    """
+    If `call_expr` calls a known closure-taking Swift API, return
     (fn_arg_idx, captures_arg_idx); else None."""
     if call_expr is None or call_expr.op != ida_hexrays.cot_call:
         return None
@@ -639,7 +654,8 @@ def _is_closure_taking_call(call_expr) -> tuple[int, int] | None:
 
 
 def _ensure_closure_ctx_struct(name: str, slot_count: int) -> ida_typeinf.tinfo_t | None:
-    """Look up the per-callsite `ClosureCtx_<…>` struct by `name`, creating
+    """
+    Look up the per-callsite `ClosureCtx_<…>` struct by `name`, creating
     a default-layout one (`_QWORD sN` for N slots) if it doesn't exist yet.
     Returns a `tinfo_t` for the struct or None on failure.
 
@@ -666,7 +682,8 @@ def _ensure_closure_ctx_struct(name: str, slot_count: int) -> ida_typeinf.tinfo_
 
 
 def _closure_ctx_struct_name(call_ea: int) -> str:
-    """Per-callsite unique struct name keyed off the closure-taking call's
+    """
+    Per-callsite unique struct name keyed off the closure-taking call's
     EA. Stable across re-decompiles (lvar display names like `v26` shift
     around at different maturities; the call-site EA does not). Each
     closure context lives in its own struct so the user can edit one
@@ -681,7 +698,8 @@ _TRAMPOLINE_MAX_BYTES = 32  # 8 ARM64 instructions, enough for pacibsp + 1 BL + 
 
 
 def _record_closure_body_struct(body_ea: int, struct_name: str) -> None:
-    """Persist `body_ea -> struct_name` and eager-apply the captures arg if
+    """
+    Persist `body_ea -> struct_name` and eager-apply the captures arg if
     the body is a short PAC trampoline.
 
     Why size-gated: a generous eager-apply (commit d3bf1f0) tripped hex-rays
@@ -701,7 +719,8 @@ def _record_closure_body_struct(body_ea: int, struct_name: str) -> None:
 
 
 def _apply_captures_arg_to_body(body_ea: int, struct_name: str) -> bool:
-    """Append `<struct_name> *captures@<X20>` to the body's stored prototype.
+    """
+    Append `<struct_name> *captures@<X20>` to the body's stored prototype.
     Synthesizes a minimal `__int64 __usercall f@<X0>(_BYTE *x8@<X8>, captures@<X20>)`
     when no IDB type exists — only safe for trampoline-shaped bodies; gated by
     size in the single caller."""
@@ -753,7 +772,8 @@ def _lookup_closure_body_struct(body_ea: int) -> str | None:
 
 
 def _type_closure_body_x20_lvar(cfunc: ida_hexrays.cfunc_t) -> bool:  # noqa: C901
-    """If `cfunc` is the body of a known closure call site, append
+    """
+    If `cfunc` is the body of a known closure call site, append
     `<struct_name> *captures@<X20>` to its prototype — taking the
     *current cfunc's* inferred `func_type_data_t` as the starting point
     so any sret slot / inferred args (e.g. the `_BYTE *@<X8>` ReportCrash
@@ -831,7 +851,8 @@ def _reg_x20() -> int | None:
 
 
 def _type_swift_closure_ctx_lvars(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
-    """Find stack lvars passed as the captures argument to known Swift
+    """
+    Find stack lvars passed as the captures argument to known Swift
     closure-taking APIs and type them as a per-callsite `ClosureCtx_<…>`
     struct so:
 
@@ -915,7 +936,8 @@ def _type_swift_closure_ctx_lvars(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C
 
 
 class SwiftPrologRewriteHook(ida_hexrays.Hexrays_Hooks):
-    """Detect the Swift opaque-storage prolog and rename the resulting `vN` lvars
+    """
+    Detect the Swift opaque-storage prolog and rename the resulting `vN` lvars
     to type-derived names. Two-stage hook:
 
     * `CMAT_BUILT`: rename md/vwt lvars and type the VWT pointer as

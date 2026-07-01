@@ -8,9 +8,10 @@ from ioshelper.base.utils import CounterMixin
 
 
 class CallMopVisitor(mop_visitor_t, CounterMixin):
-    """Visit named calls that appear as a value-producing operand (a call nested inside an expression).
+    """
+    Visit named calls that appear as a value-producing operand (a call nested inside an expression).
 
-    Subclasses implement :meth:`handle_call` to rewrite the operand in place.
+    Subclasses implement `handle_call` to rewrite the operand in place.
     """
 
     def visit_mop(self, op: mop_t, tp, is_target: bool) -> int:
@@ -24,11 +25,11 @@ class CallMopVisitor(mop_visitor_t, CounterMixin):
         return 0
 
     def handle_call(self, op: mop_t, insn: minsn_t, name: str) -> None:
-        """Rewrite the call ``insn`` (wrapped by operand ``op``) named ``name``. Implemented by subclasses."""
+        """Rewrite the call `insn` (wrapped by operand `op`) named `name`. Implemented by subclasses."""
         raise NotImplementedError
 
     def replace_with_first_arg(self, op: mop_t, insn: minsn_t, name: str) -> bool:
-        """Replace ``f(x)`` used as a value with its first argument ``x``."""
+        """Replace `f(x)` used as a value with its first argument `x`."""
         fi: mcallinfo_t = insn.d.f
         if fi.args.empty():
             # No arguments, probably IDA have not optimized it yet
@@ -41,9 +42,10 @@ class CallMopVisitor(mop_visitor_t, CounterMixin):
 
 
 class CallInsnVisitor(minsn_visitor_t, CounterMixin):
-    """Visit named call instructions at statement level.
+    """
+    Visit named call instructions at statement level.
 
-    Subclasses implement :meth:`handle_call` to rewrite or remove the call in place.
+    Subclasses implement `handle_call` to rewrite or remove the call in place.
     """
 
     def visit_minsn(self) -> int:
@@ -55,7 +57,7 @@ class CallInsnVisitor(minsn_visitor_t, CounterMixin):
         return 0
 
     def handle_call(self, insn: minsn_t, name: str) -> None:
-        """Rewrite the statement-level call ``insn`` named ``name``. Implemented by subclasses."""
+        """Rewrite the statement-level call `insn` named `name`. Implemented by subclasses."""
         raise NotImplementedError
 
     def try_remove_call(
@@ -95,7 +97,7 @@ class CallInsnVisitor(minsn_visitor_t, CounterMixin):
         return True
 
     def replace_with_first_arg(self, insn: minsn_t, name: str) -> bool:
-        """Replace a statement-level ``f(x)`` with ``x`` (or remove it when its result is discarded)."""
+        """Replace a statement-level `f(x)` with `x` (or remove it when its result is discarded)."""
         # Might be a call with destination (for example, if it is the last statement in the function)
         # Statement-level retain with a discarded return — remove entirely when safe.
         if self.try_remove_call(insn, name=name, exact_arg_count=1, require_discarded_return=True):
@@ -115,11 +117,12 @@ class CallInsnVisitor(minsn_visitor_t, CounterMixin):
 
 
 class CallOptimizer(ida_hexrays.optinsn_t):
-    """An ``optinsn_t`` that runs a mop-level and/or insn-level call visitor once IDA has reconstructed calls.
+    """
+    An `optinsn_t` that runs a mop-level and/or insn-level call visitor once IDA has reconstructed calls.
 
     Attributes:
-        mop_visitor_cls: Visitor for calls nested as value operands, or ``None`` to skip that pass.
-        insn_visitor_cls: Visitor for statement-level calls, or ``None`` to skip that pass.
+        mop_visitor_cls: Visitor for calls nested as value operands, or `None` to skip that pass.
+        insn_visitor_cls: Visitor for statement-level calls, or `None` to skip that pass.
     """
 
     mop_visitor_cls: type[CallMopVisitor] | None = None

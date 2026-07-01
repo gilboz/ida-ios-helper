@@ -1,12 +1,13 @@
-"""Shared selector-token plumbing for the Obj-C bracket-sugar passes.
+"""
+Shared selector-token plumbing for the Obj-C bracket-sugar passes.
 
 Both `objc_msgsend` (`objc_msgSend` calls) and `objc_opt` (the runtime
-fast-paths) synthesize selector name tokens. This module is the single owner of what
-a selector token looks like and of the per-function registry that makes those tokens
+fast-paths) synthesize selector name tokens. This module is the single owner of what a
+selector token looks like and of the per-function registry that makes those tokens
 interactive: double-clicking one launches IDA's selector-jump action, and pressing
 `x` over it lists the selector's call sites (see `locate_selector_xrefs`).
-Routing every pass through here keeps the interactivity working uniformly — that is
-why `objc_opt` selectors behave the same as `objc_msgSend` ones.
+Routing every pass through here keeps the interactivity working uniformly — that is why
+`objc_opt` selectors behave the same as `objc_msgSend` ones.
 """
 
 __all__ = [
@@ -38,10 +39,12 @@ _selectors_by_func: dict[int, dict[int, str]] = {}
 
 
 def make_selector_token(text: str, anchor: Anchor) -> Token:
-    """Build a selector name token anchored to its ctree item.
+    """
+    Build a selector name token anchored to its ctree item.
 
     The anchor decides what hovering / double-clicking / `x` resolve to, so callers
-    pass the selector's own ctree item.
+    pass the selector's own ctree item (`objc_msgSend`) or the originating runtime
+    call's item (`objc_opt`).
     """
     return Token(text, Color.DEMNAME, anchor=anchor)
 
@@ -52,7 +55,8 @@ def register_selectors(entry_ea: int, selectors: dict[int, str]) -> None:
 
 
 def selector_under_cursor(vu: vdui_t, flags: int) -> str | None:
-    """Return the selector string for the rewritten selector token under the cursor.
+    """
+    Return the selector string for the rewritten selector token under the cursor.
 
     Args:
         vu: The decompiler view to inspect.
@@ -71,7 +75,8 @@ def selector_under_cursor(vu: vdui_t, flags: int) -> str | None:
 
 
 def handle_selector_double_click(vu: vdui_t) -> int:
-    """Forward a double-click on a rewritten selector to IDA's selector-jump action.
+    """
+    Forward a double-click on a rewritten selector to IDA's selector-jump action.
 
     Returns:
         `1` if the cursor was on a rewritten selector (handled), else `0`.
@@ -83,7 +88,8 @@ def handle_selector_double_click(vu: vdui_t) -> int:
 
 
 def handle_selector_xref(vu: vdui_t, key_code: int, shift_state: int) -> int:
-    """List a rewritten selector's call sites when `x` is pressed over it.
+    """
+    List a rewritten selector's call sites when `x` is pressed over it.
 
     Returns:
         `1` if `x` was handled on a rewritten selector, else `0`.

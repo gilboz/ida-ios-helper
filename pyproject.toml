@@ -80,6 +80,8 @@ select = [
     "RUF",
     # tryceratops
     "TRY",
+    # pydocstyle: summary on its own line after the opening quotes (overrides Google's D212)
+    "D213",
 ]
 ignore = [
     # LineTooLong
@@ -93,6 +95,12 @@ ignore = [
     # Custom error classes
     "TRY003"
 ]
+
+# Google convention, but with the summary on its own line after the opening quotes
+# (D213) rather than on the first line (D212). Only D213 is enforced; the convention is
+# declared so the rest of the Google docstring rules stay consistent if enabled later.
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.format]
 preview = true

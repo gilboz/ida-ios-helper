@@ -814,7 +814,8 @@ def optimize_swift_class_call(func_ea: int) -> bool:
 
 
 class _FuncCreatedIDBHook(idaapi.IDB_Hooks):
-    """Apply `__swiftClassCall` as soon as IDA recognizes a new function with
+    """
+    Apply `__swiftClassCall` as soon as IDA recognizes a new function with
     the x20-incoming-arg prolog. Without this, functions discovered AFTER
     `fix_swift_types`'s startup scan (e.g. when hex-rays decompiles a caller
     that branches to a previously-undefined sub) get their type applied
@@ -904,7 +905,8 @@ def _find_swift_typeref_segment() -> segments.Segment | None:
 
 
 def apply_swift_typeref_strings() -> int:
-    """Mark each Swift mangled type name in `__swift5_typeref` as a C string.
+    """
+    Mark each Swift mangled type name in `__swift5_typeref` as a C string.
 
     Names are NULL-terminated, but a name may contain `0x01..0x17` symbolic-reference
     markers — each marker is followed by a 4-byte relative offset whose bytes can
@@ -951,7 +953,8 @@ def apply_swift_typeref_strings() -> int:
 
 
 def apply_swift_throws_x21() -> int:
-    """For every Swift `throws` function, add `__spoils<x21>` to its prototype
+    """
+    For every Swift `throws` function, add `__spoils<x21>` to its prototype
     so hex-rays knows the call clobbers the swifterror register.
 
     Without this, the decompiler treats x21 as callee-saved (it normally is on
@@ -988,7 +991,8 @@ def apply_swift_throws_x21() -> int:
 
 
 def _xcrun_swift_demangle_batch(names: list[str]) -> dict[str, str]:
-    """Pipe every Swift mangled name through `xcrun swift-demangle` and return
+    """
+    Pipe every Swift mangled name through `xcrun swift-demangle` and return
     a {mangled: demangled} map. Faster than per-call exec by ~100x for a few
     hundred symbols."""
     import subprocess
@@ -1021,7 +1025,8 @@ def _func_has_no_args(ti) -> bool:
 
 
 def _resolve_func_tinfo(ea: int):
-    """Return a func `tinfo_t` for `ea`, or None.
+    """
+    Return a func `tinfo_t` for `ea`, or None.
 
     Three sources, in order of preference:
 
@@ -1070,7 +1075,8 @@ def _resolve_func_tinfo(ea: int):
 
 
 def _ensure_throws_x21_spoils(ea: int) -> bool:
-    """Add X21 to the function's spoiled-registers list without disturbing
+    """
+    Add X21 to the function's spoiled-registers list without disturbing
     the prototype.
 
     First attempt rewrote the prototype as `__usercall …__spoils<X21>` by
@@ -1130,7 +1136,8 @@ _SWIFTSELF_PAT = re.compile(r"\b__swiftself\s+")
 
 
 def _adapt_sig_to_ida_version(sig: str) -> str:
-    """Translate signature strings stored in canonical IDA-9.4 form
+    """
+    Translate signature strings stored in canonical IDA-9.4 form
     (`__swiftcall ... __swiftself ...`) back to our custom `__swiftClassCall`
     CC for IDA <9.4 (which doesn't know `__swiftcall`/`__swiftself`).
     No-op on 9.4+."""
@@ -1176,7 +1183,8 @@ def fix_swift_types() -> None:
 
 
 def apply_swift_class_call_to_all_functions() -> int:
-    """Pre-apply `__swiftClassCall (id self)` to every function whose prolog
+    """
+    Pre-apply `__swiftClassCall (id self)` to every function whose prolog
     uses x20 as an incoming arg.
 
     Without this, when hex-rays first decompiles such a function (e.g. when

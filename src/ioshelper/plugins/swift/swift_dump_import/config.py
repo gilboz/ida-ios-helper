@@ -1,4 +1,5 @@
-"""ipsw binary path discovery + persistence.
+"""
+ipsw binary path discovery + persistence.
 
 Resolution order:
     1. Path saved in the IDB netnode (set via the menu action)

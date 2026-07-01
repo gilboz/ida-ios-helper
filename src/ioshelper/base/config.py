@@ -1,13 +1,13 @@
 """
 Plugin configuration loaded from the user's IDA directory.
 
-The plugin reads a single optional TOML file at ``~/.idapro/ioshelper.cfg`` when it
-loads. The file is parsed once into a ``Config`` and exposed as the module-level
-``config`` singleton. When the file is absent or unreadable the built-in defaults
+The plugin reads a single optional TOML file at `~/.idapro/ioshelper.cfg` when it
+loads. The file is parsed once into a `Config` and exposed as the module-level
+`config` singleton. When the file is absent or unreadable the built-in defaults
 apply, so a missing config is never an error.
 
 Example:
-    Enable debug mode and drop Swift support when reversing a pure Obj-C binary::
+    Enable debug mode and drop Swift support when reversing a pure Obj-C binary:
 
         debug = true
         disabled_features = ["swift"]
@@ -40,38 +40,56 @@ class Config:
     Attributes:
         debug: Enable development conveniences: the F2 reload and F4 toggle hotkeys
             and debug-only components.
-        disabled_features: Feature groups to skip entirely (see ``Feature``).
+        disabled_features: Feature groups to skip entirely (see `Feature`).
         disabled_components: Names of individual components to skip when loading the
             plugin core.
+        experimental_components: Names of work-in-progress components to opt into. These
+            are disabled by default and only loaded when listed here.
     """
 
     debug: bool = False
     disabled_features: frozenset[Feature] = frozenset()
     disabled_components: frozenset[str] = frozenset()
+    experimental_components: frozenset[str] = frozenset()
 
     def is_feature_enabled(self, feature: Feature) -> bool:
         """
-        Return whether the components belonging to ``feature`` should be loaded.
+        Return whether the components belonging to `feature` should be loaded.
 
         Args:
             feature: The feature group to check.
 
         Returns:
-            ``True`` unless ``feature`` is listed in ``disabled_features``.
+            `True` unless `feature` is listed in `disabled_features`.
         """
         return feature not in self.disabled_features
 
     def is_component_enabled(self, name: str) -> bool:
         """
-        Return whether the component named ``name`` should be loaded.
+        Return whether the component named `name` should be loaded.
 
         Args:
             name: The component's name.
 
         Returns:
-            ``True`` unless ``name`` is listed in ``disabled_components``.
+            `True` unless `name` is listed in `disabled_components`.
         """
         return name not in self.disabled_components
+
+    def is_experimental_enabled(self, name: str) -> bool:
+        """
+        Return whether the experimental component named `name` should be loaded.
+
+        Experimental components are work-in-progress and disabled by default; they are
+        loaded only when opted into via `experimental_components`.
+
+        Args:
+            name: The component's name.
+
+        Returns:
+            `True` only when `name` is listed in `experimental_components`.
+        """
+        return name in self.experimental_components
 
     @classmethod
     def load(cls, path: Path = CONFIG_PATH) -> Self:
@@ -79,10 +97,10 @@ class Config:
         Parse the configuration file, falling back to defaults on any error.
 
         Args:
-            path: Path to the TOML config file. Defaults to ``CONFIG_PATH``.
+            path: Path to the TOML config file. Defaults to `CONFIG_PATH`.
 
         Returns:
-            The parsed config, or a default-valued config when ``path`` is missing,
+            The parsed config, or a default-valued config when `path` is missing,
             unreadable, or malformed.
         """
         if not path.exists():
@@ -99,12 +117,13 @@ class Config:
             debug=bool(data.get("debug", False)),
             disabled_features=_parse_features(_string_list(data, "disabled_features")),
             disabled_components=frozenset(_string_list(data, "disabled_components")),
+            experimental_components=frozenset(_string_list(data, "experimental_components")),
         )
 
 
 def _string_list(data: dict[str, Any], key: str) -> list[str]:
     """
-    Coerce ``data[key]`` to a list of strings.
+    Coerce `data[key]` to a list of strings.
 
     Args:
         data: The parsed TOML table.
@@ -123,7 +142,7 @@ def _string_list(data: dict[str, Any], key: str) -> list[str]:
 
 def _parse_features(names: list[str]) -> frozenset[Feature]:
     """
-    Resolve feature names to ``Feature`` members.
+    Resolve feature names to `Feature` members.
 
     Args:
         names: Raw feature names read from the config file.

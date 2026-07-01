@@ -15,3 +15,7 @@ disabled_features = []
 # Individual components to skip, by name (finer-grained than disabled_features).
 # e.g. disabled_components = ["SwiftStrings", "Obj-C optimizers"]
 disabled_components = []
+
+# Work-in-progress components to opt into, by name. These are disabled by default.
+# e.g. experimental_components = ["Obj-C msgSend arg count"]
+experimental_components = []

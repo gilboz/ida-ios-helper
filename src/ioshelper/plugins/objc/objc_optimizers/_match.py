@@ -21,14 +21,15 @@ _SUFFIXES_TO_IGNORE: list[str | re.Pattern] = [
 
 
 def match_func_name(arr: list[str | re.Pattern], name: str) -> bool:
-    """Match ``name`` against ``arr`` after stripping a leading decoration prefix and trailing suffix.
+    """
+    Match `name` against `arr` after stripping a leading decoration prefix and trailing suffix.
 
     Args:
-        arr: Names/patterns to match against (see :func:`ioshelper.base.utils.match`).
-        name: The raw call target name, possibly carrying a ``_``/``j_`` prefix and an ``_N``/``_xN`` suffix.
+        arr: Names/patterns to match against (see `ioshelper.base.utils.match`).
+        name: The raw call target name, possibly carrying a `_`/`j_` prefix and an `_N`/`_xN` suffix.
 
     Returns:
-        Whether the normalized name matches an entry in ``arr``.
+        Whether the normalized name matches an entry in `arr`.
     """
     for prefix in _SORTED_PREFIXES:
         if name.startswith(prefix):

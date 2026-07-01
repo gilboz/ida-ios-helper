@@ -22,6 +22,11 @@ from .plugins.kernelcache.func_renamers import (
 from .plugins.kernelcache.generic_calls_fix import generic_calls_fix_component
 from .plugins.kernelcache.kalloc_type import apply_kalloc_type_component, create_type_from_kalloc_component
 from .plugins.kernelcache.obj_this import this_arg_fixer_component
+from .plugins.objc.objc_arg_renamer import mass_objc_arg_renamer_component, objc_arg_renamer_component
+from .plugins.objc.objc_msgsend_args import (
+    OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME,
+    objc_msgsend_argcount_component,
+)
 from .plugins.objc.objc_optimizers import component as objc_optimizers_component
 from .plugins.objc.objc_ref import objc_xrefs_component
 from .plugins.objc.objc_sugar import objc_sugar_component
@@ -109,11 +114,17 @@ def shared_modules() -> list[ComponentFactory]:
 
 
 def objc_plugins() -> list[ComponentFactory]:
-    return [
+    plugins: list[ComponentFactory] = [
         oslog_component,
         objc_xrefs_component,
+        objc_arg_renamer_component,
+        mass_objc_arg_renamer_component,
         objc_sugar_component,
     ]
+    # WIP: selector-driven objc_msgSend arg-count fixup is unreliable, so it is opt-in.
+    if config.is_experimental_enabled(OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME):
+        plugins.append(objc_msgsend_argcount_component)
+    return plugins
 
 
 def swift_plugins() -> list[ComponentFactory]:

@@ -1,4 +1,5 @@
-"""Mapping from Swift `static os_log_type_t.<X>.getter` mangled symbol names to
+"""
+Mapping from Swift `static os_log_type_t.<X>.getter` mangled symbol names to
 the numeric `os_log_type_t` constant they return.
 
 The type argument passed to `_os_log_impl` from Swift comes back from one of

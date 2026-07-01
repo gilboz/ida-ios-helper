@@ -1,4 +1,5 @@
-"""Bracket-syntax sugar for the Obj-C runtime fast-paths hex-rays prints as plain calls.
+"""
+Bracket-syntax sugar for the Obj-C runtime fast-paths hex-rays prints as plain calls.
 
 The clang/ARC optimized entry points (`objc_alloc`, `objc_opt_self`,
 `objc_opt_isKindOfClass`, …) decompile to ordinary C-style calls. This module
@@ -43,7 +44,8 @@ RUNTIME_BRACKET_CALLS: dict[str, tuple[tuple[str, int], ...]] = {
 
 
 def rewrite_opt_calls(tokens: list[Token]) -> dict[int, str] | None:
-    """Rewrite the runtime calls in `RUNTIME_BRACKET_CALLS` into bracket syntax.
+    """
+    Rewrite the runtime calls in `RUNTIME_BRACKET_CALLS` into bracket syntax.
 
     Args:
         tokens: The function's pseudocode tokens, mutated in place.
@@ -96,7 +98,8 @@ def _preceding_anchor(tokens: list[Token], i: int) -> Anchor | None:
 
 
 def _opt_arg(tokens: list[Token], span: tuple[int, int]) -> list[Token]:
-    """The tokens for one runtime-call argument span.
+    """
+    The tokens for one runtime-call argument span.
 
     Drops leading inlay-hint decoration, and renders a `&OBJC_CLASS___Name` class
     reference as the bare, still-navigable class name `Name`. Anything else (a
@@ -125,7 +128,8 @@ def _build_opt_bracket(
     sends: tuple[tuple[str, int], ...],
     anchor: Anchor,
 ) -> tuple[list[Token], dict[int, str]] | None:
-    """Build the bracket form for a runtime call from its argument spans and send chain.
+    """
+    Build the bracket form for a runtime call from its argument spans and send chain.
 
     `args[0]` is the receiver; the rest fill the sends' parameters in order. Each
     synthesized selector keeps `anchor` (the original call's ctree anchor) so it

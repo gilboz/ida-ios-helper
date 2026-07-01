@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Host-side client for `idat_ipc_server.py`. Sends one JSON command,
+"""
+Host-side client for `idat_ipc_server.py`. Sends one JSON command,
 prints the response, exits.
 
 Examples:

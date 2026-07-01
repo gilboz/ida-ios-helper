@@ -1,10 +1,10 @@
 """
 Dump pseudocode with visible IDA color and anchor tags.
 
-A thin renderer over :mod:`idahelper.pseudocode`: each tagged line is parsed
+A thin renderer over `idahelper.pseudocode`: each tagged line is parsed
 into tokens and the invisible color / anchor escapes are spelled out as
-bracketed markers (``[ON KEYWORD]``, ``[OFF KEYWORD]``, ``[ADDR CITEM#3 0x…]``,
-``[INV]``), while the visible text is left untouched. Lines are grouped by
+bracketed markers (`[ON KEYWORD]`, `[OFF KEYWORD]`, `[ADDR CITEM#3 0x…]`,
+`[INV]`), while the visible text is left untouched. Lines are grouped by
 section (declaration / variables / code) so the body is easy to find.
 """
 
@@ -14,9 +14,7 @@ from idahelper.pseudocode import Anchor, Line, Pseudocode, Section
 
 
 def _anchor_label(anchor: Anchor) -> str:
-    """
-    Format a decoded anchor like ``CITEM#3 0x000…003`` (or a plain ``0x…``).
-    """
+    """Format a decoded anchor like `CITEM#3 0x000…003` (or a plain `0x…`)."""
     if anchor.kind is None:
         return f"0x{anchor.raw.upper()}"
     return f"{anchor.kind.name}#{anchor.index} 0x{anchor.raw.upper()}"
@@ -27,8 +25,8 @@ def annotate_line(line: Line, *, show_addr_tags: bool = True) -> str:
     Render one parsed line with its color and anchor escapes spelled out.
 
     Args:
-        line: A line parsed by :meth:`idahelper.pseudocode.Line.parse`.
-        show_addr_tags: When ``False``, ``[ADDR …]`` markers are omitted.
+        line: A line parsed by `idahelper.pseudocode.Line.parse`.
+        show_addr_tags: When `False`, `[ADDR …]` markers are omitted.
 
     Returns:
         The line text with annotations inlined.
@@ -48,9 +46,7 @@ def annotate_line(line: Line, *, show_addr_tags: bool = True) -> str:
 
 
 def annotate_tagged_line(tagged: str, *, show_addr_tags: bool = True) -> str:
-    """
-    Parse a raw tagged line and annotate it (convenience wrapper).
-    """
+    """Parse a raw tagged line and annotate it (convenience wrapper)."""
     return annotate_line(Line.parse(tagged), show_addr_tags=show_addr_tags)
 
 
@@ -59,15 +55,15 @@ def dump_ps(*, ea: int | None = None, out_path: str = "/tmp/pseudocode.txt", sho
     Decompile a function and write annotated, section-grouped pseudocode to disk.
 
     Args:
-        ea: Function entry point. Defaults to ``idc.get_screen_ea()``.
+        ea: Function entry point. Defaults to `idc.get_screen_ea()`.
         out_path: Output file path for the annotated pseudocode.
-        show_addr_tags: Passed through to :func:`annotate_line`.
+        show_addr_tags: Passed through to `annotate_line`.
 
     Returns:
-        The annotated pseudocode string that was written to ``out_path``.
+        The annotated pseudocode string that was written to `out_path`.
 
     Raises:
-        RuntimeError: If decompilation fails for ``ea``.
+        RuntimeError: If decompilation fails for `ea`.
     """
     ea = ea if ea is not None else idc.get_screen_ea()
     cfunc = ida_hexrays.decompile(ea)

@@ -135,7 +135,8 @@ def get_impl_from_parent(cls: tinfo_t, offset: int, pure_virtual_ea: int) -> tup
 
 
 def get_vtable_entry(cls: tinfo_t, offset: int, pure_virtual_ea: int) -> int | None:
-    """Given a class and an offset to vtable entry, return the ea of the function at the given offset
+    """
+    Given a class and an offset to vtable entry, return the ea of the function at the given offset
     if it is not pure virtual."""
     vtable_func_ea = cpp.vtable_func_at(cls, offset)
     return vtable_func_ea if vtable_func_ea and pure_virtual_ea != vtable_func_ea else None

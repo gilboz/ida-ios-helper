@@ -126,9 +126,7 @@ class PluginCore:
             self.mounted = False
 
     def unload(self):
-        """
-        Unload the plugin core.
-        """
+        """Unload the plugin core."""
 
         # unhook just in-case load() was never actually called...
         self._startup_hooks.unhook()
@@ -155,9 +153,7 @@ class PluginCore:
         return True
 
     def run(self, arg: int):
-        """
-        Proxy for the `run` method of the plugin_t interface.
-        """
+        """Proxy for the `run` method of the plugin_t interface."""
         self.run_callback(arg)
 
     @staticmethod

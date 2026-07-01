@@ -1,4 +1,5 @@
-"""Low-level token-list utilities shared by the Obj-C bracket-sugar passes.
+"""
+Low-level token-list utilities shared by the Obj-C bracket-sugar passes.
 
 `objc_msgsend`, `objc_opt`, and `objc_sugar` all post-process the same
 tokenized pseudocode, so the call-scanning and argument-splitting primitives they need
@@ -32,7 +33,8 @@ def open_paren_after(tokens: list[Token], callee: int) -> int | None:
 
 
 def split_args(tokens: list[Token], open_paren: int) -> tuple[list[tuple[int, int]] | None, int]:  # noqa: C901
-    """Split a call's arguments into inclusive `(start, end)` token ranges.
+    """
+    Split a call's arguments into inclusive `(start, end)` token ranges.
 
     Tracking nesting on `()`/`[]` symbol tokens is enough — string literals are
     single tokens, so parentheses inside them are never miscounted.

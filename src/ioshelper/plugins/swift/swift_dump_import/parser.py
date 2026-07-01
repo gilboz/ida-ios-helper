@@ -1,4 +1,5 @@
-"""Parse `ipsw swift-dump --demangle -V` text output into structured records.
+"""
+Parse `ipsw swift-dump --demangle -V` text output into structured records.
 
 The verbose dump emits:
 

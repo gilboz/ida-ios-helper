@@ -1,4 +1,5 @@
-"""Mapping from Swift type names (as emitted by `ipsw swift-dump --demangle`)
+"""
+Mapping from Swift type names (as emitted by `ipsw swift-dump --demangle`)
 to (C-style typedecl, size_in_bytes).
 
 Keys are normalized: `Swift.`/`Foundation.`/`__C.` prefixes stripped, whitespace
