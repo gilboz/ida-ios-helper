@@ -60,6 +60,8 @@ def _install_hooks_and_setup() -> None:
         "ioshelper.plugins.swift.swift_types.swift_types",
         "ioshelper.plugins.swift.swift_types.prolog_rewrite",
         "ioshelper.plugins.swift.swift_oslog.log_hook",
+        "ioshelper.plugins.objc.objc_sugar.tokens",
+        "ioshelper.plugins.objc.objc_sugar.selectors",
         "ioshelper.plugins.objc.objc_sugar.objc_sugar",
         "ioshelper.plugins.objc.objc_sugar.objc_msgsend",
     ):

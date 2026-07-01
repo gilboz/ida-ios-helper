@@ -14,6 +14,8 @@ from idahelper import memory, objc
 from idahelper.ast import cexpr
 from idahelper.pseudocode import Anchor, Color, Line, Pseudocode, Section, Token
 
+from .tokens import drop_trailing_comma
+
 # Object-C class refs are rendered as ``OBJC_CLASS___<Name>``.
 OBJC_CLASS_PREFIX = "OBJC_CLASS___"
 # Visible characters a line may consist of (besides whitespace) and still be merged
@@ -261,21 +263,8 @@ def _merge_into(target: Line, source: Line) -> None:
     Append ``source``'s closers to ``target``, dropping a now-dangling trailing comma.
     """
     if target.text.rstrip().endswith(","):
-        _drop_trailing_comma(target.tokens)
+        drop_trailing_comma(target.tokens)
     target.tokens.extend(_lstrip_tokens(source.tokens))
-
-
-def _drop_trailing_comma(tokens: list[Token]) -> None:
-    """
-    Remove the last visible comma token (and trailing blanks) from a line's tokens.
-    """
-    for i in range(len(tokens) - 1, -1, -1):
-        token = tokens[i]
-        if token.anchor is not None or token.is_blank:
-            continue
-        if token.is_symbol(","):
-            del tokens[i]
-        return
 
 
 def _lstrip_tokens(tokens: list[Token]) -> list[Token]:

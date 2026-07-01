@@ -10,14 +10,13 @@ __all__ = ["objc_msgsend_hexrays_hooks_t"]
 
 from dataclasses import replace
 
-import ida_hexrays
-import ida_kernwin
 from ida_hexrays import Hexrays_Hooks, cfunc_t, vdui_t
 from ida_kernwin import simpleline_t
 from ida_pro import strvec_t
 from idahelper.pseudocode import Anchor, Color, Line, Token
 
-from ..objc_ref.objc_xref import locate_selector_xrefs, module_for_ea
+from .selectors import handle_selector_double_click, handle_selector_xref, make_selector_token, register_selectors
+from .tokens import MAX_REWRITES, find_callee, open_paren_after, split_args
 
 # IDA renders every message send the same way regardless of dispatch (bare
 # `objc_msgSend`, a `j_`-thunk, or a selector stub `_objc_msgSend$foo`) — always
@@ -25,25 +24,10 @@ from ..objc_ref.objc_xref import locate_selector_xrefs, module_for_ea
 # rewrite; `objc_msgSendSuper2` etc. are deliberately excluded.
 MSGSEND_NAMES = frozenset({"objc_msgSend", "_objc_msgSend", "j_objc_msgSend", "j__objc_msgSend"})
 
-# IDA's built-in "Jump by selector..." action, launched on a double-clicked selector.
-JUMP_SELECTOR_ACTION = "objc:JumpSelector"
-
-# The 'x' key (IDA's "list cross-references"). When pressed over a rewritten
-# selector we show that selector's call sites instead of IDA's default xrefs to
-# the underlying selector-string literal.
-XREF_KEY = ord("X")
-
-# Guard against pathological input to avoid any chance of an infinite loop.
-_MAX_REWRITES = 4096
-
 # Wrapped continuation lines are merged back together as long as the result stays
 # within this many visible columns (Hex-Rays' line width is not exposed via the
 # SDK, so this mirrors its common default).
 MAX_LINE_LENGTH = 120
-
-# Per-function map: selector ctree-item index -> selector string. Populated when a
-# function is printed, read back when its selector is double-clicked.
-_selectors_by_func: dict[int, dict[int, str]] = {}
 
 
 class objc_msgsend_hexrays_hooks_t(Hexrays_Hooks):
@@ -54,10 +38,9 @@ class objc_msgsend_hexrays_hooks_t(Hexrays_Hooks):
     receiver and argument tokens *verbatim* (preserving their colors and ctree
     anchors so navigation keeps working) and only rewrites the structural tokens.
     The synthesized selector token is anchored to the selector argument's ctree
-    item, so hovering it shows the selector (not the receiver), double-clicking
-    launches :data:`JUMP_SELECTOR_ACTION`, and pressing ``x`` over it lists the
-    selector's call sites (see :func:`locate_selector_xrefs`). As a final step it
-    also merges wrapped continuation lines back together where they now fit (see
+    item, so hovering it shows the selector (not the receiver); double-clicking and
+    pressing ``x`` over it are handled by ``selectors``. As a final step it also
+    merges wrapped continuation lines back together where they now fit (see
     :func:`merge_wrapped_lines`).
     """
 
@@ -72,7 +55,7 @@ class objc_msgsend_hexrays_hooks_t(Hexrays_Hooks):
         line = Line.parse("\n".join(ps[i].line for i in range(ps.size())))
         selectors = rewrite(line.tokens)
         if selectors is not None:
-            _selectors_by_func[cfunc.entry_ea] = selectors
+            register_selectors(cfunc.entry_ea, selectors)
         tagged_lines = line.to_tagged().split("\n")
         merged = merge_wrapped_lines(tagged_lines)
         if selectors is None and len(merged) == len(tagged_lines):
@@ -84,42 +67,13 @@ class objc_msgsend_hexrays_hooks_t(Hexrays_Hooks):
         """
         Forward a double-click on a rewritten selector to IDA's selector-jump action.
         """
-        if _selector_under_cursor(vu, ida_hexrays.USE_MOUSE) is None:
-            return 0
-        ida_kernwin.process_ui_action(JUMP_SELECTOR_ACTION)
-        return 1
+        return handle_selector_double_click(vu)
 
     def keyboard(self, vu: vdui_t, key_code: int, shift_state: int) -> int:
         """
         List a rewritten selector's call sites when ``x`` is pressed over it.
         """
-        if key_code != XREF_KEY or shift_state != 0:
-            return 0
-        selector = _selector_under_cursor(vu, ida_hexrays.USE_KEYBOARD)
-        if selector is None:
-            return 0
-        locate_selector_xrefs(selector, module_for_ea(vu.cfunc.entry_ea))
-        return 1
-
-
-def _selector_under_cursor(vu: vdui_t, flags: int) -> str | None:
-    """
-    Return the selector string for the rewritten selector token under the cursor.
-
-    Args:
-        vu: The decompiler view to inspect.
-        flags: Cursor source — ``USE_MOUSE`` for clicks, ``USE_KEYBOARD`` for keys.
-
-    Returns:
-        The selector string, or ``None`` if the cursor is not on a rewritten selector.
-    """
-    selectors = _selectors_by_func.get(vu.cfunc.entry_ea)
-    if not selectors or not vu.get_current_item(flags):
-        return None
-    item = vu.item
-    if not item.is_citem():
-        return None
-    return selectors.get(item.it.index)
+        return handle_selector_xref(vu, key_code, shift_state)
 
 
 def rewrite(tokens: list[Token]) -> dict[int, str] | None:
@@ -138,15 +92,15 @@ def rewrite(tokens: list[Token]) -> dict[int, str] | None:
     """
     selectors: dict[int, str] = {}
     pos = 0
-    for _ in range(_MAX_REWRITES):
-        pos = _find_msgsend(tokens, pos)
+    for _ in range(MAX_REWRITES):
+        pos = find_callee(tokens, pos, MSGSEND_NAMES)
         if pos is None:
             break
-        open_paren = _open_paren_after(tokens, pos)
+        open_paren = open_paren_after(tokens, pos)
         if open_paren is None:
             pos += 1
             continue
-        args, close = _split_args(tokens, open_paren)
+        args, close = split_args(tokens, open_paren)
         if args is None or len(args) < 2:
             pos += 1
             continue
@@ -160,76 +114,6 @@ def rewrite(tokens: list[Token]) -> dict[int, str] | None:
         # Re-scan from `pos`: `tokens[pos]` is now `[`, and any nested call kept
         # verbatim in the receiver/arguments lies further on and is picked up next.
     return selectors or None
-
-
-def _find_msgsend(tokens: list[Token], start: int) -> int | None:
-    """
-    Index of the next ``objc_msgSend`` callee token at/after ``start``.
-    """
-    for i in range(start, len(tokens)):
-        if tokens[i].text in MSGSEND_NAMES and tokens[i].color is not None:
-            return i
-    return None
-
-
-def _open_paren_after(tokens: list[Token], callee: int) -> int | None:
-    """
-    Index of the ``(`` that follows the callee token (skipping anchors/spaces).
-    """
-    i = callee + 1
-    while i < len(tokens) and (tokens[i].anchor is not None or tokens[i].is_blank):
-        i += 1
-    return i if i < len(tokens) and tokens[i].is_symbol("(") else None
-
-
-def _split_args(tokens: list[Token], open_paren: int) -> tuple[list[tuple[int, int]] | None, int]:  # noqa: C901
-    """
-    Split the call's arguments into inclusive ``(start, end)`` token ranges.
-
-    Tracking nesting on ``()``/``[]`` symbol tokens is enough — string literals are
-    single tokens, so parentheses inside them are never miscounted.
-
-    Args:
-        tokens: The pseudocode tokens being scanned.
-        open_paren: Index of the call's opening ``(``.
-
-    Returns:
-        ``(ranges, close_index)`` where each range trims surrounding whitespace but
-        keeps anchors, or ``(None, -1)`` if the matching ``)`` is missing.
-    """
-    args: list[tuple[int, int]] = []
-    start: int | None = None
-    end: int | None = None
-    depth = 0
-
-    def flush() -> None:
-        nonlocal start, end
-        if start is not None:
-            args.append((start, end))
-        start = end = None
-
-    for i in range(open_paren, len(tokens)):
-        token = tokens[i]
-        if token.is_symbol("(") or token.is_symbol("["):
-            outermost = depth == 0
-            depth += 1
-            if outermost:
-                continue  # the call's own '(' is structure, not argument content
-        elif token.is_symbol(")") or token.is_symbol("]"):
-            depth -= 1
-            if depth == 0:
-                flush()
-                return args, i
-        elif depth == 1 and token.is_symbol(","):
-            flush()
-            continue
-        # Track content of the current argument, trimming surrounding whitespace
-        # (anchors count as content so an argument keeps its leading anchor).
-        if depth >= 1 and not token.is_blank:
-            if start is None:
-                start = i
-            end = i
-    return None, -1
 
 
 def _build_call(
@@ -263,7 +147,7 @@ def _build_call(
     out.append(Token(" "))
     # Anchor the selector name to the selector's own ctree item, so hovering /
     # double-clicking it resolves to the selector — not the receiver.
-    out.append(Token(text, Color.DEMNAME, anchor=anchor))
+    out.append(make_selector_token(text, anchor))
     out.append(Token("]", Color.SYMBOL))
     # Always emit the call parentheses, so a zero-argument selector still reads as
     # a call: ``[recv sel]()`` rather than the ambiguous ``[recv sel]``.
