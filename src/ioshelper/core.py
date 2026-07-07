@@ -13,6 +13,7 @@ from .plugins.common.outline import mark_outline_functions_component
 from .plugins.common.range_condition import range_condition_optimizer_component
 from .plugins.common.run_callback import run_callback
 from .plugins.common.segment_xrefs import show_segment_xrefs_component
+from .plugins.dsc.organize_functions import organize_functions_component
 from .plugins.kernelcache.cpp_vtbl import jump_to_vtable_component
 from .plugins.kernelcache.func_renamers import (
     apply_pac_component,
@@ -85,12 +86,12 @@ class IOSHelperToggleActionHandler(ida_kernwin.action_handler_t):
 
 
 def get_modules_for_file() -> list[ComponentFactory]:
-    is_objc = file_format.is_objc()
     return [
         *shared_modules(),
-        *(objc_plugins() if is_objc and config.is_feature_enabled(Feature.OBJC) else []),
-        *(swift_plugins() if is_objc and config.is_feature_enabled(Feature.SWIFT) else []),
+        *(objc_plugins() if file_format.is_objc() and config.is_feature_enabled(Feature.OBJC) else []),
+        *(swift_plugins() if file_format.is_swift() and config.is_feature_enabled(Feature.SWIFT) else []),
         *(kernel_cache_plugins() if file_format.is_kernelcache() else []),
+        *(dsc_plugins() if file_format.is_dsc() else []),
     ]
 
 
@@ -137,6 +138,12 @@ def swift_plugins() -> list[ComponentFactory]:
         swift_strings_component,
         swift_dump_import_component,
         swift_dump_config_component,
+    ]
+
+
+def dsc_plugins() -> list[ComponentFactory]:
+    return [
+        organize_functions_component,
     ]
 
 

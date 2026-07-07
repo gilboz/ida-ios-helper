@@ -387,6 +387,12 @@ Swift binaries (`disabled_features = ["swift"]` skips them all):
 | `swift-dump-import` | Import Swift type metadata using ipsw's swift-dump |
 | `swift-dump-config` | Configure the ipsw path for the Swift dump import |
 
+dyld_shared_cache databases:
+
+| Name | Description |
+|---|---|
+| `dsc-organize-functions` | Organize the Functions window into folders by module and segment kind (stubs, ...) |
+
 Kernelcache:
 
 | Name | Description |
