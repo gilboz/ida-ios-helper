@@ -3,7 +3,7 @@ from typing import Literal
 import ida_hexrays
 from ida_hexrays import Hexrays_Hooks, cexpr_t, cfunc_t
 from idahelper import tif
-from idahelper.ast import cexpr
+from idahelper.ast import cexpr, citem
 
 
 def is_unsigned_comparison_expr(e: cexpr_t) -> bool:
@@ -58,7 +58,7 @@ class RangeConditionTreeVisitor(ida_hexrays.ctree_visitor_t):
             if e.op in (ida_hexrays.cot_ugt, ida_hexrays.cot_uge)
             else create_range_condition_less_than
         )(e, lhs_const, rhs_const, mod, x, lhs.y.ea, self.func)
-        e.swap(replacement_expr)
+        citem.swap_preserving_label(e, replacement_expr)
 
         self.prune_now()
         return 0

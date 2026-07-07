@@ -1,7 +1,7 @@
 import ida_hexrays
 from ida_hexrays import Hexrays_Hooks, cexpr_t, cfuncptr_t, cinsn_t
 from idahelper import memory
-from idahelper.ast import cexpr, cinsn
+from idahelper.ast import cexpr, cinsn, citem
 
 from .block import BlockBaseFieldsAssignments, get_block_type, get_ida_block_lvars
 from .block_arg_byref import BlockByRefArgBaseFieldsAssignments, get_block_byref_args_lvars
@@ -16,6 +16,21 @@ class objc_blocks_optimizer_hooks_t(Hexrays_Hooks):
         optimize_blocks(func)
         optimize_block_byref_args(func)
         return 0
+
+
+def replace_first_and_cleanup(assignments: list[cinsn_t], new_insn: cinsn_t) -> None:
+    """
+    Collapse a run of block field-assignment statements into `new_insn`.
+
+    The first statement is replaced in place by `new_insn` and the rest are emptied.
+    `swap_preserving_label` keeps any `goto`-target label on the first statement (see it for
+    the INTERR 50728 rationale); `cleanup` preserves `label_num`, so labels on the emptied
+    statements survive on their own.
+    """
+    first_assignment, *rest = assignments
+    for assignment in rest:
+        assignment.cleanup()
+    citem.swap_preserving_label(first_assignment, new_insn)
 
 
 # region byref args
@@ -42,10 +57,7 @@ def optimize_block_byref_arg(lvar: str, func: cfuncptr_t, assignments: list[Stru
         return False
 
     new_insn = create_byref_init_insn(lvar, func, byref_fields)
-    first_assignment = byref_fields.assignments[0]
-    for assignment in byref_fields.assignments[1:]:
-        assignment.cleanup()
-    first_assignment.swap(new_insn)
+    replace_first_and_cleanup(byref_fields.assignments, new_insn)
     return True
 
 
@@ -101,10 +113,7 @@ def optimize_block(lvar: str, func: cfuncptr_t, assignments: list[StructFieldAss
         return False
 
     new_insn = create_block_init_insn(lvar, func, block_fields)
-    first_assignment = block_fields.assignments[0]
-    for assignment in block_fields.assignments[1:]:
-        assignment.cleanup()
-    first_assignment.swap(new_insn)
+    replace_first_and_cleanup(block_fields.assignments, new_insn)
     return True
 
 

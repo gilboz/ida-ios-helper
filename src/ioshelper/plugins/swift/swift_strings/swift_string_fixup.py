@@ -13,7 +13,7 @@ from ida_hexrays import (
 )
 from ida_typeinf import tinfo_t
 from idahelper import tif
-from idahelper.ast import cexpr
+from idahelper.ast import cexpr, citem
 
 from .swift_string import decode as decode_swift_string
 
@@ -147,7 +147,7 @@ def _remove_prior_with_ctx(ctx: CommaContext | BlockContext, current: cexpr_t):
     if isinstance(ctx, CommaContext):
         # Swaping the parent can lead to deleting nodes we iterate over, so replace LHS with constant 1
         # TODO: Is there a cleaner way to do this?
-        ctx.parent.x.swap(cexpr.from_const_value(1))
+        citem.swap_preserving_label(ctx.parent.x, cexpr.from_const_value(1))
     elif isinstance(ctx, BlockContext):
         victim = ctx.parent.cblock[ctx.idx]
         victim.cleanup()
@@ -223,11 +223,11 @@ class SwiftStringVisitor(ctree_parentee_t):
         )
 
         # Replace RHS with the call
-        expr.y.swap(call)
+        citem.swap_preserving_label(expr.y, call)
 
         # Assign directly to the struct/object (remove '._object'/'._countAndFlagsBits')
         lhs_parent = cexpr_t(expr.x.x)
-        expr.x.swap(lhs_parent)
+        citem.swap_preserving_label(expr.x, lhs_parent)
 
         # # Neutralize the older complementary assignment
         _remove_prior_with_ctx(ctx, expr)
@@ -276,5 +276,5 @@ class SwiftStringVisitor(ctree_parentee_t):
         new_comparison = cexpr.from_binary_op(
             cexpr_t(lhs.x.x), call, ida_hexrays.cot_eq, tif.from_c_type("bool"), expr.ea
         )
-        expr.swap(new_comparison)
+        citem.swap_preserving_label(expr, new_comparison)
         self.prune_now()
