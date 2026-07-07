@@ -24,6 +24,7 @@ import ida_kernwin
 import ida_name
 import ida_typeinf
 import idaapi
+from idahelper import file_format
 
 from ioshelper.plugins.swift.swift_dump_import.config import get_ipsw_path
 from ioshelper.plugins.swift.swift_dump_import.parser import Method, TypeDecl, parse
@@ -187,7 +188,7 @@ def import_swift_dump() -> None:
         # <DSC> <DYLIB> for a dyld shared cache. We pass one arg, so skip on
         # DSC rather than dump its usage banner into the log. A future
         # revision could prompt for the dylib name and pass it through.
-        if "dyld" in (idaapi.get_file_type_name() or "").lower():
+        if file_format.is_dsc():
             print(
                 "[swift_dump] input is a dyld shared cache — "
                 "`ipsw swift-dump` needs an explicit dylib name and isn't "
