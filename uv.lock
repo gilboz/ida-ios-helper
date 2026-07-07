@@ -16,7 +16,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "idahelper", specifier = "==1.0.18" }]
+requires-dist = [{ name = "idahelper", editable = "../idahelper" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -26,11 +26,14 @@ dev = [
 
 [[package]]
 name = "idahelper"
-version = "1.0.18"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fe/0f/384b06e711d2982066f0f6aa511db7f41bca599b0f80da27188858f73335/idahelper-1.0.18.tar.gz", hash = "sha256:f1b8bb57acfbe60022810bedd2db47ac260b92644fad183f74d4771ec859ffe8", size = 25640, upload-time = "2026-02-19T14:50:44.583Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/34/50/6113059e0868b772d79309069012345bd0feeac4c5cf4d882cabce39b00e/idahelper-1.0.18-py3-none-any.whl", hash = "sha256:906832330ce766b816cdc1534f507dc0a914b0946650c62083e424f30ec3d341", size = 31585, upload-time = "2026-02-19T14:50:43.277Z" },
+source = { editable = "../idahelper" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "ruff", specifier = ">=0.12.2" },
+    { name = "vermin", specifier = "~=1.8" },
 ]
 
 [[package]]

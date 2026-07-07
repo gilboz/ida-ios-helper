@@ -15,7 +15,7 @@ classifiers = [
 
 requires-python = ">=3.11"
 dependencies = [
-    "idahelper==1.0.18",
+    "idahelper",
 ]
 
 [project.urls]
@@ -104,3 +104,6 @@ convention = "google"
 
 [tool.ruff.format]
 preview = true
+
+[tool.uv.sources]
+idahelper = { path = "../idahelper", editable = true }
