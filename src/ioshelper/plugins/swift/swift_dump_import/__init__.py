@@ -32,10 +32,13 @@ class _ConfigureIpswHandler(ida_kernwin.action_handler_t):
         return idaapi.AST_ENABLE_ALWAYS
 
 
-swift_dump_import_component = StartupScriptComponent.factory("SwiftDumpImport", [import_swift_dump])
+swift_dump_import_component = StartupScriptComponent.factory(
+    "swift-dump-import", "Import Swift type metadata using ipsw's swift-dump", [import_swift_dump]
+)
 
 swift_dump_config_component = UIActionsComponent.factory(
-    "SwiftDumpConfig",
+    "swift-dump-config",
+    "Configure the ipsw path for the Swift dump import",
     [
         lambda core: UIAction(
             _CONFIG_ACTION_ID,

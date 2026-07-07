@@ -24,10 +24,17 @@ class Component:
     A component is a self-contained piece of functionality that can be loaded and unloaded independently.
     It will only be loaded and unloaded when the plugin core is loaded and unloaded.
     However, it can be mounted and unmounted independently of the plugin core.
+
+    Attributes:
+        name: Short identifier (slug) used in the config file (`disabled_components`,
+            `experimental_components`) and in load/mount logs.
+        description: Human-readable summary of what the component does.
+        core: The plugin core that owns this component.
     """
 
-    def __init__(self, name: str, core: "PluginCore"):
+    def __init__(self, name: str, description: str, core: "PluginCore"):
         self.name = name
+        self.description = description
         self.core = core
 
     def load(self) -> bool:
@@ -257,8 +264,8 @@ optimizer_factory_t = Callable[[], optimizer_t]
 
 
 class OptimizersComponent(Component):
-    def __init__(self, name: str, core: PluginCore, optimizer_factories: list[optimizer_factory_t]):
-        super().__init__(name, core)
+    def __init__(self, name: str, description: str, core: PluginCore, optimizer_factories: list[optimizer_factory_t]):
+        super().__init__(name, description, core)
         self._optimizer_factories = optimizer_factories
         self._optimizers: list[optimizer_t] | None = None
 
@@ -283,8 +290,8 @@ class OptimizersComponent(Component):
         self._optimizers = None
 
     @staticmethod
-    def factory(name: str, optimizer_factories: list[optimizer_factory_t]) -> ComponentFactory:
-        return lambda core: OptimizersComponent(name, core, optimizer_factories)
+    def factory(name: str, description: str, optimizer_factories: list[optimizer_factory_t]) -> ComponentFactory:
+        return lambda core: OptimizersComponent(name, description, core, optimizer_factories)
 
 
 @dataclasses.dataclass
@@ -316,8 +323,10 @@ class UIActionsComponentUIHooks(idaapi.UI_Hooks):
 
 # Another common type of component is installing ui actions. This is a helper class to make it easier.
 class UIActionsComponent(Component):
-    def __init__(self, name: str, core: PluginCore, action_factories: list[Callable[[PluginCore], UIAction]]):
-        super().__init__(name, core)
+    def __init__(
+        self, name: str, description: str, core: PluginCore, action_factories: list[Callable[[PluginCore], UIAction]]
+    ):
+        super().__init__(name, description, core)
         self._action_factories = action_factories
         self._actions: list[UIAction] | None = None
         self._ui_hooks: UI_Hooks | None = None
@@ -354,14 +363,22 @@ class UIActionsComponent(Component):
             self._ui_hooks.unhook()
 
     @staticmethod
-    def factory(name: str, action_factories: list[Callable[[PluginCore], UIAction]]) -> ComponentFactory:
-        return lambda core: UIActionsComponent(name, core, action_factories)
+    def factory(
+        name: str, description: str, action_factories: list[Callable[[PluginCore], UIAction]]
+    ) -> ComponentFactory:
+        return lambda core: UIActionsComponent(name, description, core, action_factories)
 
 
 # A common type of component is installing hooks for the decompiler. This is a helper class to make it easier.
 class HexraysHookComponent(Component):
-    def __init__(self, name: str, core: PluginCore, hook_factories: list[Callable[[], ida_hexrays.Hexrays_Hooks]]):
-        super().__init__(name, core)
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        core: PluginCore,
+        hook_factories: list[Callable[[], ida_hexrays.Hexrays_Hooks]],
+    ):
+        super().__init__(name, description, core)
         self._hook_factories = hook_factories
         self._hooks: list[ida_hexrays.Hexrays_Hooks] | None = None
 
@@ -384,13 +401,15 @@ class HexraysHookComponent(Component):
         self._hooks = None
 
     @staticmethod
-    def factory(name: str, hook_factories: list[Callable[[], ida_hexrays.Hexrays_Hooks]]) -> ComponentFactory:
-        return lambda core: HexraysHookComponent(name, core, hook_factories)
+    def factory(
+        name: str, description: str, hook_factories: list[Callable[[], ida_hexrays.Hexrays_Hooks]]
+    ) -> ComponentFactory:
+        return lambda core: HexraysHookComponent(name, description, core, hook_factories)
 
 
 class StartupScriptComponent(Component):
-    def __init__(self, name: str, core: PluginCore, callbacks: list[Callable[[], None]]):
-        super().__init__(name, core)
+    def __init__(self, name: str, description: str, core: PluginCore, callbacks: list[Callable[[], None]]):
+        super().__init__(name, description, core)
         self._callbacks = callbacks
 
     def load(self):
@@ -408,5 +427,5 @@ class StartupScriptComponent(Component):
         pass
 
     @staticmethod
-    def factory(name: str, callbacks: list[Callable[[], None]]) -> ComponentFactory:
-        return lambda core: StartupScriptComponent(name, core, callbacks)
+    def factory(name: str, description: str, callbacks: list[Callable[[], None]]) -> ComponentFactory:
+        return lambda core: StartupScriptComponent(name, description, core, callbacks)

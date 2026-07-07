@@ -9,7 +9,8 @@ from .cpp_vtbl import get_vtable_call, show_vtable_xrefs
 ACTION_ID = "ioshelper:jump_to_vtbl_xrefs"
 
 jump_to_vtable_component = UIActionsComponent.factory(
-    "Jump to VTables xrefs",
+    "vtable-xrefs",
+    "Jump to the implementations of a virtual method via the vtables",
     [
         lambda core: UIAction(
             ACTION_ID,

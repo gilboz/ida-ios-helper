@@ -46,7 +46,8 @@ from .plugins.swift.swift_types import (
 TOGGLE_ACTION_ID = "ioshelper:toggle"
 
 toggle_ios_helper_mount_component = UIActionsComponent.factory(
-    "toggle plugin mounting",
+    "toggle-mount",
+    "Toggle the plugin's optimizations on/off at runtime",
     [
         lambda core: UIAction(
             TOGGLE_ACTION_ID,

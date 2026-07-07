@@ -7,8 +7,10 @@ from .optimizer import objc_msgsend_argcount_optimizer_t
 # WIP: deriving the objc_msgSend argument count from the selector still mis-handles some
 # calls, so this component is experimental and disabled by default. Opt in by adding this
 # name to `experimental_components` in the config. Kept wired up for reference/dev.
-OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME = "Obj-C msgSend arg count"
+OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME = "objc-msgsend-argcount"
 
 objc_msgsend_argcount_component = OptimizersComponent.factory(
-    OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME, [objc_msgsend_argcount_optimizer_t]
+    OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME,
+    "Derive objc_msgSend argument count from the selector (experimental)",
+    [objc_msgsend_argcount_optimizer_t],
 )

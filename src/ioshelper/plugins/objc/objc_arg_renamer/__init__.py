@@ -19,7 +19,8 @@ MASS_ACTION_ID = "ioshelper:mass_rename_objc_args"
 
 
 objc_arg_renamer_component = UIActionsComponent.factory(
-    "Rename Obj-C method arguments in current function",
+    "objc-arg-renamer",
+    "Rename Obj-C method arguments in the current function",
     [
         lambda core: UIAction(
             LOCAL_ACTION_ID,
@@ -34,6 +35,7 @@ objc_arg_renamer_component = UIActionsComponent.factory(
 )
 
 mass_objc_arg_renamer_component = UIActionsComponent.factory(
+    "objc-arg-renamer-all",
     "Rename Obj-C method arguments in all functions",
     [
         lambda core: UIAction(

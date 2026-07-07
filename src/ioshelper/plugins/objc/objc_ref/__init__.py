@@ -10,7 +10,8 @@ from .objc_xref import locate_xrefs
 ACTION_ID = "ioshelper:show_objc_xrefs"
 
 objc_xrefs_component = UIActionsComponent.factory(
-    "Show objc xrefs",
+    "objc-xrefs",
+    "Show Obj-C xrefs of methods and selectors",
     [
         lambda core: UIAction(
             ACTION_ID,

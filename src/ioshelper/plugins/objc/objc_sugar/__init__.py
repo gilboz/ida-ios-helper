@@ -10,5 +10,7 @@ from .objc_sugar import objc_selector_hexrays_hooks_t
 # fires *last* (Hexrays hooks fire in reverse install order): its msgSend rewrite
 # and line-merge then run on text the selector pass has already shortened.
 objc_sugar_component = HexraysHookComponent.factory(
-    "ObjcSugar", [objc_msgsend_hexrays_hooks_t, objc_selector_hexrays_hooks_t]
+    "objc-sugar",
+    "Rewrite objc_msgSend calls and selectors as Obj-C syntax",
+    [objc_msgsend_hexrays_hooks_t, objc_selector_hexrays_hooks_t],
 )

@@ -337,8 +337,64 @@ The plugin reads an optional TOML config file at `~/.idapro/ioshelper.cfg` when 
 The file is optional — when it is absent the built-in defaults apply.
 
 See [`ioshelper.cfg.example`](ioshelper.cfg.example) for a documented template covering
-every setting (`debug`, `disabled_features`, and `disabled_components`). Copy it to
-`~/.idapro/ioshelper.cfg` and edit it to taste.
+every setting (`debug`, `disabled_features`, `disabled_components`, and
+`experimental_components`). Copy it to `~/.idapro/ioshelper.cfg` and edit it to taste.
 
 Edit the file and reload the plugin (`F2` in debug mode, or `ioshelper.reload()`) to pick
 up changes.
+
+#### Components
+
+Each entry below is a component name that can be listed in `disabled_components` (or, for
+experimental ones, in `experimental_components`) in the config file.
+
+Always loaded:
+
+| Name | Description |
+|---|---|
+| `this-arg-fixer` | Convert the first function argument to this/self |
+| `toggle-mount` | Toggle the plugin's optimizations on/off at runtime |
+| `clang-blocks-args` | Analyze stack-allocated Clang blocks and their `__block` arguments |
+| `clang-blocks-optimizer` | Optimize Clang blocks initialization in the decompiler |
+| `jump-to-string` | Jump to a function using a specific string |
+| `objc-optimizers` | Obj-C decompiler optimizers |
+| `range-condition-optimizer` | Simplify range-check conditions in the decompiler |
+| `mark-outline-functions` | Locate all the outlined functions and mark them as such |
+| `segment-xrefs` | Show xrefs inside a segment |
+| `globals` | Expose helper functions in the IDA Python console |
+| `dump-pseudocode` | Dump annotated pseudocode to `/tmp/pseudocode.txt` (debug mode only) |
+
+Obj-C binaries (`disabled_features = ["objc"]` skips them all):
+
+| Name | Description |
+|---|---|
+| `oslog-optimizer` | Optimize os_log calls in the decompiler |
+| `objc-xrefs` | Show Obj-C xrefs of methods and selectors |
+| `objc-arg-renamer` | Rename Obj-C method arguments in the current function |
+| `objc-arg-renamer-all` | Rename Obj-C method arguments in all functions |
+| `objc-sugar` | Rewrite objc_msgSend calls and selectors as Obj-C syntax |
+| `objc-msgsend-argcount` | Derive objc_msgSend argument count from the selector (experimental, opt-in) |
+
+Swift binaries (`disabled_features = ["swift"]` skips them all):
+
+| Name | Description |
+|---|---|
+| `swift-types` | Fix Swift types when the database is opened |
+| `swift-class-call` | Rewrite Swift class method calls in the decompiler |
+| `swift-prolog-rewrite` | Hide Swift function prologs in the decompiler |
+| `swift-oslog` | Rewrite Swift os_log calls in the decompiler |
+| `swift-strings` | Recover inline Swift strings in the decompiler |
+| `swift-dump-import` | Import Swift type metadata using ipsw's swift-dump |
+| `swift-dump-config` | Configure the ipsw path for the Swift dump import |
+
+Kernelcache:
+
+| Name | Description |
+|---|---|
+| `vtable-xrefs` | Jump to the implementations of a virtual method via the vtables |
+| `generic-calls-fixer` | Fix calls to generic kernel functions (safe_metacast, ...) |
+| `local-func-renamer` | Rename locals and globals based on well-known function calls |
+| `mass-func-renamer` | Mass rename globals and fields based on well-known function calls |
+| `apply-kalloc-types` | Locate all the kalloc_type_view in the kernelcache and apply them on types |
+| `apply-pac` | Apply PAC-derived types on the current function |
+| `create-kalloc-struct` | Create a struct from the currently selected kalloc_type_view |

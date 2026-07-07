@@ -18,7 +18,8 @@ from .utils import run_objc_plugin_on_func
 ACTION_ID = "ioshelper:restore_llvm_block_args_byref"
 
 clang_block_args_analyzer_component = UIActionsComponent.factory(
-    "Clang Blocks - __block arguments",
+    "clang-blocks-args",
+    "Analyze stack-allocated Clang blocks and their __block arguments",
     [
         lambda core: UIAction(
             ACTION_ID,
@@ -34,7 +35,9 @@ clang_block_args_analyzer_component = UIActionsComponent.factory(
 )
 
 clang_block_optimizer_component = HexraysHookComponent.factory(
-    "Clang Blocks - optimizer", [objc_blocks_optimizer_hooks_t]
+    "clang-blocks-optimizer",
+    "Optimize Clang blocks initialization in the decompiler",
+    [objc_blocks_optimizer_hooks_t],
 )
 
 

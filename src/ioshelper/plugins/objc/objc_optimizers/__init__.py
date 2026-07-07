@@ -21,4 +21,4 @@ _optimizers: list[optimizer_factory_t] = [objc_properties_optimizer_t, objc_call
 if not _IDA_HAS_BUILTIN_ARC:
     _optimizers.append(objc_arc_optimizer_t)
 
-component = OptimizersComponent.factory("Obj-C optimizers", _optimizers)
+component = OptimizersComponent.factory("objc-optimizers", "Obj-C decompiler optimizers", _optimizers)

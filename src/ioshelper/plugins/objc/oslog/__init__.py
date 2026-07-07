@@ -7,5 +7,7 @@ from .log_enabled_optimizer import os_log_enabled_optimizer_t
 from .log_macro_optimizer import optimizer as log_macro_optimizer
 
 component = OptimizersComponent.factory(
-    "os_log optimizer", [log_error_case_optimizer_t, log_macro_optimizer, os_log_enabled_optimizer_t]
+    "oslog-optimizer",
+    "Optimize os_log calls in the decompiler",
+    [log_error_case_optimizer_t, log_macro_optimizer, os_log_enabled_optimizer_t],
 )

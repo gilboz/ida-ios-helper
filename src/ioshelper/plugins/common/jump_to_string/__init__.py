@@ -11,7 +11,8 @@ from .jump_to_string import jump_to_string_ask
 ACTION_ID = "ioshelper:jump_to_string"
 
 jump_to_string_component = UIActionsComponent.factory(
-    "Jump to function using a specific string",
+    "jump-to-string",
+    "Jump to a function using a specific string",
     [
         lambda core: UIAction(
             ACTION_ID,

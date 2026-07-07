@@ -9,6 +9,12 @@ from ioshelper.base.reloadable_plugin import HexraysHookComponent, StartupScript
 from .prolog_rewrite import SwiftPrologRewriteHook
 from .swift_types import SwiftClassCallHook, fix_swift_types
 
-swift_types_component = StartupScriptComponent.factory("SwiftTypes", [fix_swift_types])
-swift_types_hook_component = HexraysHookComponent.factory("SwiftTypesClassCall", [SwiftClassCallHook])
-swift_prolog_hook_component = HexraysHookComponent.factory("SwiftPrologRewrite", [SwiftPrologRewriteHook])
+swift_types_component = StartupScriptComponent.factory(
+    "swift-types", "Fix Swift types when the database is opened", [fix_swift_types]
+)
+swift_types_hook_component = HexraysHookComponent.factory(
+    "swift-class-call", "Rewrite Swift class method calls in the decompiler", [SwiftClassCallHook]
+)
+swift_prolog_hook_component = HexraysHookComponent.factory(
+    "swift-prolog-rewrite", "Hide Swift function prologs in the decompiler", [SwiftPrologRewriteHook]
+)

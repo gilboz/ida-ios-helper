@@ -11,7 +11,8 @@ from .segment_xrefs import can_show_segment_xrefs, get_current_expr, show_segmen
 ACTION_ID = "ioshelper:show_segment_xrefs"
 
 show_segment_xrefs_component = UIActionsComponent.factory(
-    "Show Xrefs inside segment",
+    "segment-xrefs",
+    "Show xrefs inside a segment",
     [
         lambda core: UIAction(
             ACTION_ID,

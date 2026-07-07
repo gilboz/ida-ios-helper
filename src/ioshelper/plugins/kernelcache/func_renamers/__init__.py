@@ -21,10 +21,13 @@ from .pac_applier import apply_pac
 
 ACTION_ID = "ioshelper:func_renamer"
 
-local_func_renamer_component = HexraysHookComponent.factory("Local rename based on function calls", [hooks])
+local_func_renamer_component = HexraysHookComponent.factory(
+    "local-func-renamer", "Rename locals and globals based on well-known function calls", [hooks]
+)
 
 mass_func_renamer_component = UIActionsComponent.factory(
-    "Mass rename based on function calls",
+    "mass-func-renamer",
+    "Mass rename globals and fields based on well-known function calls",
     [
         lambda core: UIAction(
             ACTION_ID,
@@ -50,7 +53,8 @@ ACTION_ID_PAC = "ioshelper:apply_pac_on_function"
 
 
 apply_pac_component = UIActionsComponent.factory(
-    "Apply PAC types on current function",
+    "apply-pac",
+    "Apply PAC-derived types on the current function",
     [
         lambda core: UIAction(
             ACTION_ID_PAC,

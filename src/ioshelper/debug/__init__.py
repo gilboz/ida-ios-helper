@@ -13,7 +13,8 @@ ACTION_ID = "ioshelper:dump_debug_pseudocode"
 SHORTCUT = "F3"  # pick something unused; see below
 
 dump_ps_component = UIActionsComponent.factory(
-    "Dump annotated pseudocode (debug)",
+    "dump-pseudocode",
+    "Dump annotated pseudocode to /tmp/pseudocode.txt (debug)",
     [
         lambda core: UIAction(
             ACTION_ID,

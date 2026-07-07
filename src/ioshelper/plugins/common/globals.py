@@ -6,7 +6,7 @@ from ioshelper.base.reloadable_plugin import Component, PluginCore
 def globals_component(_core: PluginCore) -> Component:
     class GlobalsComponent(Component):
         def __init__(self, core: PluginCore):
-            super().__init__("globals", core)
+            super().__init__("globals", "Expose helper functions in the IDA Python console", core)
             self.global_module = sys.modules["__main__"]
 
             from ioshelper.plugins.kernelcache.func_renamers import (

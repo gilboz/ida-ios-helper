@@ -11,7 +11,8 @@ from .outline import mark_all_outline_functions
 ACTION_ID = "ioshelper:mark_outline_components"
 
 mark_outline_functions_component = UIActionsComponent.factory(
-    "Locate all the outline functions and mark them as such",
+    "mark-outline-functions",
+    "Locate all the outlined functions and mark them as such",
     [
         lambda core: UIAction(
             ACTION_ID,

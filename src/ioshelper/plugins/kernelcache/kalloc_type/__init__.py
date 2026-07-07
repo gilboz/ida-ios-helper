@@ -12,6 +12,7 @@ from .kalloc_type import apply_kalloc_types, create_struct_from_kalloc_type
 ACTION_ID_APPLY_KALLOC_TYPE = "ioshelper:apply_kalloc_type"
 
 apply_kalloc_type_component = UIActionsComponent.factory(
+    "apply-kalloc-types",
     "Locate all the kalloc_type_view in the kernelcache and apply them on types",
     [
         lambda core: UIAction(
@@ -38,6 +39,7 @@ def dynamic_menu_add(widget, _popup) -> bool:
 
 
 create_type_from_kalloc_component = UIActionsComponent.factory(
+    "create-kalloc-struct",
     "Create a struct from the currently selected kalloc_type_view",
     [
         lambda core: UIAction(

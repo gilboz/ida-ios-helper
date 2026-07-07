@@ -20,7 +20,8 @@ def dynamic_menu_add(widget, _popup) -> bool:
 
 
 this_arg_fixer_component = UIActionsComponent.factory(
-    "Convert first argument to this/self",
+    "this-arg-fixer",
+    "Convert the first function argument to this/self",
     [
         lambda core: UIAction(
             ACTION_ID,
