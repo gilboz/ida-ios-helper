@@ -67,7 +67,7 @@ def _expr_to_xrefs(expr: cexpr_t, func_ea: int) -> list[SegmentXref]:
     possible_types: set[str] = {str(t) for t in tif.get_children_classes(relevant_type) or []}
     possible_types.add(str(relevant_type))
 
-    current_segment = segments.get_segment_by_ea(func_ea)
+    current_segment = segments.Segment.by_ea(func_ea)
     if current_segment is None:
         print(f"[Error] Could not find segment for function at {func_ea:X}")
         return []

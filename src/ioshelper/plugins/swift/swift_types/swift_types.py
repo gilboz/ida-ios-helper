@@ -895,10 +895,10 @@ class SwiftClassCallHook(ida_hexrays.Hexrays_Hooks):
 def _find_swift_typeref_segment() -> segments.Segment | None:
     """Locate the `__swift5_typeref` section regardless of IDA's naming form."""
     for candidate in ("__swift5_typeref", "__TEXT:__swift5_typeref"):
-        seg = segments.get_segment_by_name(candidate)
+        seg = segments.Segment.by_name(candidate)
         if seg is not None:
             return seg
-    for seg in segments.get_segments():
+    for seg in segments.Segment.get_all():
         if seg.name.endswith("__swift5_typeref"):
             return seg
     return None

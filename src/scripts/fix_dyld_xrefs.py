@@ -5,7 +5,7 @@ from ida_funcs import func_t
 from ida_ua import insn_t
 from idahelper import instructions, segments, xrefs
 
-stubs = [s for s in segments.get_segments() if "__stubs" in s.name or "__auth_stubs" in s.name]
+stubs = [s for s in segments.Segment.get_all() if "__stubs" in s.name or "__auth_stubs" in s.name]
 
 
 @lru_cache(1000)
@@ -17,7 +17,7 @@ def is_stub_address(ea: int) -> bool:
 def fix_xrefs():
     global_total_modified = 0
     segments_count = 0
-    for seg in segments.get_segments("CODE"):
+    for seg in segments.Segment.by_cls(segments.PredefinedClass.CODE):
         segments_count += 1
         print(f"[Info] Processing segment {seg.name}...")
         total_modified = 0

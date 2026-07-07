@@ -33,7 +33,7 @@ class Xref:
 
 def module_for_ea(ea: int) -> str:
     """Return the owning module (dyld_shared_cache) or section name for an address."""
-    seg = segments.get_segment_by_ea(ea)
+    seg = segments.Segment.by_ea(ea)
     return seg.base_name if seg is not None else "<unknown>"
 
 

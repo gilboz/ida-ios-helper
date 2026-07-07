@@ -74,7 +74,7 @@ def apply_kalloc_types():
             return
 
     classes_handled: set[str] = set()
-    for segment in segments.get_segments():
+    for segment in segments.Segment.get_all():
         if segment.name.endswith("__kalloc_type"):
             set_kalloc_type_for_segment(segment, kalloc_type_view_tif, classes_handled)
         if segment.name.endswith("__kalloc_var"):

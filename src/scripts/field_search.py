@@ -9,7 +9,7 @@ import ida_hexrays
 from ida_funcs import func_t
 from ida_hexrays import mblock_t, minsn_t, mop_t
 from ida_typeinf import tinfo_t
-from idahelper import cpp, memory, segments, tif
+from idahelper import cpp, memory, tif
 from idahelper.microcode import mba, mop
 from idahelper.microcode.visitors import (
     TreeVisitOrder,
@@ -89,9 +89,9 @@ def _collect_field_accesses(segment: Segment) -> "Iterator[FieldAccess]":
 
 def _get_text_segment(name: str) -> Segment | None:
     """Get the text segment for the given name, or None if not found."""
-    seg = segments.get_segment_by_name(f"{name}:__text")
+    seg = Segment.by_name(f"{name}:__text")
     if seg is None:
-        seg = segments.get_segment_by_name(f"{name}:__TEXT_EXEC.__text")
+        seg = Segment.by_name(f"{name}:__TEXT_EXEC.__text")
     return seg
 
 
