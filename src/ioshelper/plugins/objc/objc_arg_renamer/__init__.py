@@ -28,6 +28,7 @@ objc_arg_renamer_component = UIActionsComponent.factory(
                 LOCAL_ACTION_ID,
                 "Rename Obj-C method arguments in current function",
                 RenameObjcArgsAction(),
+                "F3",
             ),
             menu_location=UIAction.base_location(core),
         )

@@ -10,7 +10,7 @@ from ioshelper.base.reloadable_plugin import UIAction, UIActionsComponent
 from .dump_pseudocode import dump_ps
 
 ACTION_ID = "ioshelper:dump_debug_pseudocode"
-SHORTCUT = "F3"  # pick something unused; see below
+SHORTCUT = "Shift+F3"
 
 dump_ps_component = UIActionsComponent.factory(
     "dump-pseudocode",
