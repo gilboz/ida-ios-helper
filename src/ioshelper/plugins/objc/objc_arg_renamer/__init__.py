@@ -8,7 +8,7 @@ __all__ = [
 import ida_kernwin
 import idaapi
 from ida_kernwin import action_handler_t
-from idahelper import widgets
+from idahelper import functions, memory, objc, widgets
 
 from ioshelper.base.reloadable_plugin import UIAction, UIActionsComponent
 
@@ -16,6 +16,16 @@ from .renamer import rename_all_objc_method_args, rename_objc_method_args
 
 LOCAL_ACTION_ID = "ioshelper:rename_objc_args"
 MASS_ACTION_ID = "ioshelper:mass_rename_objc_args"
+
+
+def dynamic_menu_add(widget, _popup) -> bool:
+    if ida_kernwin.get_widget_type(widget) != ida_kernwin.BWN_PSEUDOCODE:
+        return False
+    func_ea = functions.get_start_of_function(ida_kernwin.get_screen_ea())
+    if func_ea is None:
+        return False
+    name = memory.name_from_ea(func_ea)
+    return name is not None and objc.is_objc_method(name)
 
 
 objc_arg_renamer_component = UIActionsComponent.factory(
@@ -26,11 +36,12 @@ objc_arg_renamer_component = UIActionsComponent.factory(
             LOCAL_ACTION_ID,
             idaapi.action_desc_t(
                 LOCAL_ACTION_ID,
-                "Rename Obj-C method arguments in current function",
+                "[ios-helper] Obj-C: rename argument names by selector",
                 RenameObjcArgsAction(),
                 "F3",
             ),
             menu_location=UIAction.base_location(core),
+            dynamic_menu_add=dynamic_menu_add,
         )
     ],
 )

@@ -7,7 +7,7 @@ __all__ = [
 
 import ida_kernwin
 import idaapi
-from idahelper import widgets
+from idahelper import functions, widgets
 
 from ioshelper.base.reloadable_plugin import HexraysHookComponent, UIAction, UIActionsComponent
 
@@ -17,6 +17,13 @@ from .utils import run_objc_plugin_on_func
 
 ACTION_ID = "ioshelper:restore_llvm_block_args_byref"
 
+
+def dynamic_menu_add(widget, _popup) -> bool:
+    if ida_kernwin.get_widget_type(widget) != ida_kernwin.BWN_PSEUDOCODE:
+        return False
+    return functions.is_in_function(ida_kernwin.get_screen_ea())
+
+
 clang_block_args_analyzer_component = UIActionsComponent.factory(
     "clang-blocks-args",
     "Analyze stack-allocated Clang blocks and their __block arguments",
@@ -25,11 +32,12 @@ clang_block_args_analyzer_component = UIActionsComponent.factory(
             ACTION_ID,
             idaapi.action_desc_t(
                 ACTION_ID,
-                "Analyze stack-allocated blocks and their __block args (current function)",
+                "[ios-helper] Analyze stack blocks in current function",
                 ClangBlockDetectByrefAction(),
                 "Alt+Shift+s",
             ),
             menu_location=UIAction.base_location(core),
+            dynamic_menu_add=dynamic_menu_add,
         )
     ],
 )
