@@ -12,8 +12,10 @@ For a method named `-[Class doFoo:withBar:]` / `+[Class ...]` the decompiler's d
 
 All derived names are converted to snake_case.
 
-Only arguments that still carry their default name are touched, so manual renames are
-preserved. `rename_all_objc_method_args` drives this across the whole database.
+The current names are read from the decompiled function's argument lvars: only arguments
+that still carry their default `aN` name are touched, so manual renames and names from a
+user-applied prototype are preserved. `rename_all_objc_method_args` drives this across the
+whole database.
 """
 
 __all__ = ["rename_all_objc_method_args", "rename_objc_method_args"]
@@ -21,9 +23,9 @@ __all__ = ["rename_all_objc_method_args", "rename_objc_method_args"]
 import re
 
 from ida_funcs import func_t
-from ida_typeinf import func_type_data_t
-from idahelper import functions, memory, naming, objc, tif
-from idahelper.ast import lvars
+from ida_hexrays import DecompilationFailure, lvar_t
+from idahelper import functions, memory, naming, objc
+from idahelper.ast import cfunc, lvars
 from idahelper.ast.lvars import VariableModification
 
 # The implicit argument follows one of these words: `initWithFrame:` -> `Frame`.
@@ -66,36 +68,40 @@ def rename_objc_method_args(func: func_t) -> bool:
     if name is None or not objc.is_objc_method(name):
         return False
 
-    details = tif.get_func_details(func)
-    if details is None:
+    try:
+        decompiled = cfunc.from_func(func)
+    except DecompilationFailure as e:
+        print(f"[Error] Failed to decompile function {func.start_ea}: {e}")
+        return False
+    if decompiled is None:
         return False
 
-    renames = _selector_arg_renames(name, details)
+    renames = _selector_arg_renames(name, decompiled.arguments)
     if not renames:
         return False
 
     modifications = {old: VariableModification(name=new) for old, new in renames.items()}
-    return lvars.perform_lvar_modifications_by_ea(func.start_ea, modifications)
+    return lvars.perform_lvar_modifications(func.start_ea, decompiled.get_lvars(), modifications)
 
 
-def _selector_arg_renames(name: str, details: func_type_data_t) -> dict[str, str]:
+def _selector_arg_renames(name: str, args: list[lvar_t]) -> dict[str, str]:
     """
-    Map each still-default argument name to the name derived from the selector.
+    Map each still-default argument's lvar name to the name derived from the selector.
 
-    Returns an empty mapping when the function's parameter count does not match the
+    Returns an empty mapping when the function's argument count does not match the
     selector (so a mis-typed function is left untouched).
     """
     expected_params = name.count(":") + 2
-    if len(details) != expected_params:
+    if len(args) != expected_params:
         return {}
 
     # "-[Class doFoo:withBar:]" -> ["doFoo", "withBar", ""]
     keyword_pieces = name.split(" ")[1].split("]")[0].split(":")
 
     renames: dict[str, str] = {}
-    for pos in range(1, len(details)):  # pos 0 is the receiver (self), left untouched
+    for pos in range(1, len(args)):  # pos 0 is the receiver (self), left untouched
         default_name = f"a{pos + 1}"
-        if (details[pos].name or default_name) != default_name:
+        if args[pos].name != default_name:
             continue  # already carries a meaningful name; don't clobber it
         if pos == 1:
             new_name = "sel"
