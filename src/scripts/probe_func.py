@@ -257,8 +257,9 @@ def _parse_args() -> tuple[int, list[str], list[str]]:
     return ea, sections, mc_levels
 
 
-# Keep references to instantiated hooks alive so they don't get garbage-collected.
+# Keep references to instantiated hooks / optimizers alive so they don't get garbage-collected.
 _LIVE_HOOKS: list = []
+_LIVE_OPTIMIZERS: list = []
 
 
 def _install_ioshelper_hooks() -> None:
@@ -300,6 +301,35 @@ def _install_ioshelper_hooks() -> None:
         print("[probe] ran fix_swift_types()")
     except Exception as exc:
         print(f"[probe] fix_swift_types failed: {exc!r}", file=sys.stderr)
+
+    _install_ioshelper_optimizers()
+
+
+def _install_ioshelper_optimizers() -> None:
+    """
+    Install the plugin's microcode optimizers, which headless idat also skips.
+
+    Covers the os_log optimizers plus the DSC stub retargeting that exposes the clean
+    callee names the os_log matchers rely on (install order is not load-bearing:
+    optinsn_t optimizers rerun after any change).
+    """
+    try:
+        from ioshelper.plugins.dsc.stub_calls.optimizer import stub_call_optimizer_t
+        from ioshelper.plugins.objc.oslog.error_case_optimizer import log_error_case_optimizer_t
+        from ioshelper.plugins.objc.oslog.log_enabled_optimizer import os_log_enabled_optimizer_t
+        from ioshelper.plugins.objc.oslog.log_macro_optimizer import optimizer as log_macro_optimizer
+    except Exception as exc:
+        print(f"[probe] failed to import optimizers: {exc!r}", file=sys.stderr)
+        return
+
+    for factory in (stub_call_optimizer_t, log_error_case_optimizer_t, os_log_enabled_optimizer_t, log_macro_optimizer):
+        try:
+            o = factory()
+            o.install()
+            _LIVE_OPTIMIZERS.append(o)
+            print(f"[probe] installed {factory.__name__} optimizer")
+        except Exception as exc:
+            print(f"[probe] {factory.__name__} install failed: {exc!r}", file=sys.stderr)
 
 
 def main() -> None:

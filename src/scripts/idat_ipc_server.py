@@ -73,6 +73,12 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         "ioshelper.plugins.objc.objc_sugar.objc_opt",
         "ioshelper.plugins.objc.objc_sugar.objc_msgsend",
         "ioshelper.plugins.objc.objc_msgsend_args.optimizer",
+        "ioshelper.plugins.objc.oslog.os_log",
+        "ioshelper.plugins.objc.oslog.log_macro_optimizer",
+        "ioshelper.plugins.objc.oslog.log_enabled_optimizer",
+        "ioshelper.plugins.objc.oslog.error_case_optimizer",
+        "idahelper.dsc.stubs",
+        "ioshelper.plugins.dsc.stub_calls.optimizer",
     ):
         if modname in sys.modules:
             try:
@@ -83,10 +89,14 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
             __import__(modname)
 
     from ioshelper.base.config import Config
+    from ioshelper.plugins.dsc.stub_calls.optimizer import stub_call_optimizer_t
     from ioshelper.plugins.objc.objc_msgsend_args import OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME
     from ioshelper.plugins.objc.objc_msgsend_args.optimizer import objc_msgsend_argcount_optimizer_t
     from ioshelper.plugins.objc.objc_sugar.objc_msgsend import objc_msgsend_hexrays_hooks_t
     from ioshelper.plugins.objc.objc_sugar.objc_sugar import objc_selector_hexrays_hooks_t
+    from ioshelper.plugins.objc.oslog.error_case_optimizer import log_error_case_optimizer_t
+    from ioshelper.plugins.objc.oslog.log_enabled_optimizer import os_log_enabled_optimizer_t
+    from ioshelper.plugins.objc.oslog.log_macro_optimizer import optimizer as log_macro_optimizer
     from ioshelper.plugins.swift.swift_oslog.log_hook import SwiftLogRewriteHook
     from ioshelper.plugins.swift.swift_types.prolog_rewrite import SwiftPrologRewriteHook
     from ioshelper.plugins.swift.swift_types.swift_types import SwiftClassCallHook, fix_swift_types
@@ -111,7 +121,14 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
     # is experimental/WIP, so gate it on the same opt-in flag as `core.objc_plugins`.
     # Re-read the config on every reload so toggling the flag doesn't need a restart.
     config = Config.load()
-    optimizers: list = []
+    # The DSC stub retargeting exposes the clean callee names the os_log matchers rely on.
+    # Install order is not load-bearing for optinsn_t: any change reruns the optimizers.
+    optimizers: list = [
+        stub_call_optimizer_t,
+        log_error_case_optimizer_t,
+        os_log_enabled_optimizer_t,
+        log_macro_optimizer,
+    ]
     if config.is_experimental_enabled(OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME):
         optimizers.append(objc_msgsend_argcount_optimizer_t)
     else:
