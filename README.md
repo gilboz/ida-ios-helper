@@ -348,59 +348,63 @@ up changes.
 Each entry below is a component name that can be listed in `disabled_components` (or, for
 experimental ones, in `experimental_components`) in the config file.
 
+A check in the **UI only** column means the component only makes sense with the IDA GUI;
+it is skipped automatically when running headless (idalib / idat).
+
 Always loaded:
 
-| Name | Description |
-|---|---|
-| `this-arg-fixer` | Convert the first function argument to this/self |
-| `toggle-mount` | Toggle the plugin's optimizations on/off at runtime |
-| `clang-blocks-args` | Analyze stack-allocated Clang blocks and their `__block` arguments |
-| `clang-blocks-optimizer` | Optimize Clang blocks initialization in the decompiler |
-| `jump-to-string` | Jump to a function using a specific string |
-| `objc-optimizers` | Obj-C decompiler optimizers |
-| `range-condition-optimizer` | Simplify range-check conditions in the decompiler |
-| `mark-outline-functions` | Locate all the outlined functions and mark them as such |
-| `segment-xrefs` | Show xrefs inside a segment |
-| `globals` | Expose helper functions in the IDA Python console |
-| `dump-pseudocode` | Dump annotated pseudocode to `/tmp/pseudocode.txt` (debug mode only) |
+| Name | Description | UI only |
+|---|---|:-:|
+| `this-arg-fixer` | Convert the first function argument to this/self | ✔ |
+| `toggle-mount` | Toggle the plugin's optimizations on/off at runtime | ✔ |
+| `clang-blocks-args` | Analyze stack-allocated Clang blocks and their `__block` arguments | ✔ |
+| `clang-blocks-optimizer` | Optimize Clang blocks initialization in the decompiler | |
+| `jump-to-string` | Jump to a function using a specific string | ✔ |
+| `range-condition-optimizer` | Simplify range-check conditions in the decompiler | |
+| `mark-outline-functions` | Locate all the outlined functions and mark them as such | ✔ |
+| `segment-xrefs` | Show xrefs inside a segment | ✔ |
+| `globals` | Expose helper functions in the IDA Python console | |
+| `dump-pseudocode` | Dump annotated pseudocode to `/tmp/pseudocode.txt` (debug mode only) | ✔ |
 
-Obj-C binaries (`disabled_features = ["objc"]` skips them all):
+Obj-C binaries, including dyld_shared_cache (`disabled_features = ["objc"]` skips them all):
 
-| Name | Description |
-|---|---|
-| `oslog-optimizer` | Optimize os_log calls in the decompiler |
-| `objc-xrefs` | Show Obj-C xrefs of methods and selectors |
-| `objc-arg-renamer` | Rename Obj-C method arguments in the current function |
-| `objc-arg-renamer-all` | Rename Obj-C method arguments in all functions |
-| `objc-sugar` | Rewrite objc_msgSend calls and selectors as Obj-C syntax |
-| `objc-msgsend-argcount` | Derive objc_msgSend argument count from the selector (experimental, opt-in) |
+| Name | Description | UI only |
+|---|---|:-:|
+| `oslog-optimizer` | Optimize os_log calls in the decompiler | |
+| `objc-xrefs` | Show Obj-C xrefs of methods and selectors | ✔ |
+| `objc-optimizers` | Obj-C decompiler optimizers | |
+| `objc-arg-renamer` | Rename Obj-C method arguments in the current function | ✔ |
+| `objc-arg-renamer-all` | Rename Obj-C method arguments in all functions | ✔ |
+| `objc-sugar` | Rewrite objc_msgSend calls and selectors as Obj-C syntax | |
+| `objc-msgsend-argcount` | Derive objc_msgSend argument count from the selector (experimental, opt-in) | |
 
-Swift binaries (`disabled_features = ["swift"]` skips them all):
+Swift binaries, including dyld_shared_cache (`disabled_features = ["swift"]` skips them all):
 
-| Name | Description |
-|---|---|
-| `swift-types` | Fix Swift types when the database is opened |
-| `swift-class-call` | Rewrite Swift class method calls in the decompiler |
-| `swift-prolog-rewrite` | Hide Swift function prologs in the decompiler |
-| `swift-oslog` | Rewrite Swift os_log calls in the decompiler |
-| `swift-strings` | Recover inline Swift strings in the decompiler |
-| `swift-dump-import` | Import Swift type metadata using ipsw's swift-dump |
-| `swift-dump-config` | Configure the ipsw path for the Swift dump import |
+| Name | Description | UI only |
+|---|---|:-:|
+| `swift-types` | Fix Swift types when the database is opened | |
+| `swift-class-call` | Rewrite Swift class method calls in the decompiler | |
+| `swift-prolog-rewrite` | Hide Swift function prologs in the decompiler | |
+| `swift-oslog` | Rewrite Swift os_log calls in the decompiler | |
+| `swift-strings` | Recover inline Swift strings in the decompiler | |
+| `swift-dump-import` | Import Swift type metadata using ipsw's swift-dump | |
+| `swift-dump-config` | Configure the ipsw path for the Swift dump import | ✔ |
 
 dyld_shared_cache databases:
 
-| Name | Description |
-|---|---|
-| `dsc-organize-functions` | Organize the Functions window into folders by module and segment kind (stubs, ...) |
+| Name | Description | UI only |
+|---|---|:-:|
+| `dsc-stub-calls` | Retarget dyld_shared_cache import-stub calls to the real function with a clean name (experimental, opt-in) | |
+| `dsc-organize-functions` | Organize the Functions window into folders by module and segment kind (stubs, ...) | ✔ |
 
 Kernelcache:
 
-| Name | Description |
-|---|---|
-| `vtable-xrefs` | Jump to the implementations of a virtual method via the vtables |
-| `generic-calls-fixer` | Fix calls to generic kernel functions (safe_metacast, ...) |
-| `local-func-renamer` | Rename locals and globals based on well-known function calls |
-| `mass-func-renamer` | Mass rename globals and fields based on well-known function calls |
-| `apply-kalloc-types` | Locate all the kalloc_type_view in the kernelcache and apply them on types |
-| `apply-pac` | Apply PAC-derived types on the current function |
-| `create-kalloc-struct` | Create a struct from the currently selected kalloc_type_view |
+| Name | Description | UI only |
+|---|---|:-:|
+| `vtable-xrefs` | Jump to the implementations of a virtual method via the vtables | ✔ |
+| `generic-calls-fixer` | Fix calls to generic kernel functions (safe_metacast, ...) | |
+| `local-func-renamer` | Rename locals and globals based on well-known function calls | |
+| `mass-func-renamer` | Mass rename globals and fields based on well-known function calls | ✔ |
+| `apply-kalloc-types` | Locate all the kalloc_type_view in the kernelcache and apply them on types | ✔ |
+| `apply-pac` | Apply PAC-derived types on the current function | ✔ |
+| `create-kalloc-struct` | Create a struct from the currently selected kalloc_type_view | ✔ |
