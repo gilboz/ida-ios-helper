@@ -11,7 +11,7 @@ ACTION_ID = "ioshelper:show_objc_xrefs"
 
 objc_xrefs_component = UIActionsComponent.factory(
     "objc-xrefs",
-    "Show Obj-C xrefs of methods and selectors",
+    "Show xrefs to the current function or Obj-C selector",
     [
         lambda core: UIAction(
             ACTION_ID,

@@ -1,23 +1,14 @@
-__all__ = ["locate_selector_xrefs", "locate_xrefs", "module_for_ea", "refresh_selector_stub_cache"]
+"""Cross-reference lookups for Obj-C selectors and stub-backed functions."""
 
-import re
+__all__ = ["locate_selector_xrefs", "locate_xrefs", "module_for_ea"]
+
 from dataclasses import dataclass
-from itertools import count
 
 import ida_kernwin
-import idaapi
-import idautils
-import idc
 from ida_kernwin import Choose
-from idahelper import segments
-
-# Taken from: https://github.com/doronz88/ida-scripts/blob/main/objc_hotkeys.py
-OBJC_MSGSEND_PREFIX = "_objc_msgSend$"
-
-# Lazily built index: normalized selector -> [(stub_ea, stub_name), ...].
-# Built once on first lookup; call refresh_selector_stub_cache() after re-running
-# the stub renamer to rebuild it.
-_STUB_CACHE: dict[str, list[tuple[int, str]]] | None = None
+from idahelper import file_format, functions, memory, objc, segments
+from idahelper.dsc.stubs import DscStubCache
+from idahelper.xrefs import get_xrefs_to
 
 # Per-target memory of the last xref the user jumped to, so reopening the chooser
 # re-selects it. Lets you walk every call site one Ctrl+4 at a time.
@@ -26,202 +17,156 @@ _LAST_XREF_BY_NAME: dict[str, int] = {}
 
 @dataclass
 class Xref:
+    """
+    One resolved cross-reference, as displayed in the chooser.
+
+    Attributes:
+        name: Display name of the referencing location (function name, `+offset` suffixed).
+        address: Address the reference originates from.
+        module: Owning module (or section) of `address`.
+    """
+
     name: str
     address: int
     module: str
 
 
 def module_for_ea(ea: int) -> str:
-    """Return the owning module (dyld_shared_cache) or section name for an address."""
+    """
+    Return the owning module (dyld_shared_cache) or section name for an address.
+
+    Args:
+        ea: The address to look up.
+
+    Returns:
+        The module/section base name, or `<unknown>` when `ea` is in no segment.
+    """
     seg = segments.Segment.by_ea(ea)
     return seg.base_name if seg is not None else "<unknown>"
 
 
-def get_name_for_ea(ea: int) -> str:
-    func_name = idc.get_func_name(ea)
-    func_address = idc.get_name_ea_simple(func_name)
-    return func_name if ea == func_address else f"{func_name}+{ea - func_address:08x}"
-
-
-# ---------------------------------------------------------------------------
-# Selector -> stub matching.
-#
-# Resilient to the iOS 27 stub-naming changes: instead of doing exact-name
-# lookups (which broke), index every _objc_msgSend$ function once and match
-# selectors after normalization (colons -> underscores, stripping IDA's "_N" /
-# "__0" duplicate suffixes).
-# ---------------------------------------------------------------------------
-
-
-def strip_ida_duplicate_suffix(s: str) -> str:
-    """Strip IDA's duplicate-name suffix: foo_0 / foo_1 / foo_123 -> foo."""
-    return re.sub(r"_\d+$", "", s)
-
-
-def normalize_selector(s: str) -> str:
-    """Canonical key used for matching: foo:bar: -> foo_bar_ ; foo_bar__0 -> foo_bar_."""
-    if not s:
-        return ""
-
-    s = strip_ida_duplicate_suffix(s)
-    return s.replace(":", "_")
-
-
-def build_stub_cache() -> dict[str, list[tuple[int, str]]]:
+def _display_name_for_ea(ea: int) -> str:
     """
-    Index every _objc_msgSend$ function under several keys so a selector can be
-    matched regardless of how IDA mangled the stub name.
+    Return the name of the function at `ea`, with a `+offset` suffix when `ea` is mid-function.
 
-    Returns: normalized_selector -> [(stub_ea, stub_name), ...].
+    Args:
+        ea: The address to name.
+
+    Returns:
+        The function name (suffixed with `+offset` for a mid-function address), or the
+        plain name/hex address when `ea` is not inside a function.
     """
-    cache: dict[str, list[tuple[int, str]]] = {}
-
-    for func_ea in idautils.Functions():
-        name = idc.get_func_name(func_ea) or idc.get_name(func_ea, idaapi.GN_VISIBLE)
-        if not name or not name.startswith(OBJC_MSGSEND_PREFIX):
-            continue
-
-        stub_selector = name[len(OBJC_MSGSEND_PREFIX) :]
-        keys = {
-            stub_selector,
-            strip_ida_duplicate_suffix(stub_selector),
-            normalize_selector(stub_selector),
-        }
-        for key in keys:
-            cache.setdefault(key, []).append((func_ea, name))
-
-    return cache
-
-
-def refresh_selector_stub_cache() -> None:
-    """Rebuild the stub index. Call this after re-running the stub renamer."""
-    global _STUB_CACHE
-
-    _STUB_CACHE = build_stub_cache()
-    count_entries = sum(len(v) for v in _STUB_CACHE.values())
-    print(f"[*] Refreshed objc_msgSend stub cache: {count_entries} indexed entries")
-
-
-def find_stubs_for_selector(selector: str) -> list[tuple[int, str]]:
-    """Return sorted [(stub_ea, stub_name), ...] matching `selector`."""
-    global _STUB_CACHE
-
-    if _STUB_CACHE is None:
-        print("[*] Building objc_msgSend stub cache...")
-        refresh_selector_stub_cache()
-        assert _STUB_CACHE is not None
-
-    wanted_keys = {
-        selector,
-        selector.replace(":", "_"),
-        normalize_selector(selector),
-    }
-
-    found: dict[int, str] = {}
-    for key in wanted_keys:
-        for ea, name in _STUB_CACHE.get(key, []):
-            found[ea] = name
-
-    return sorted(found.items())
-
-
-# ---------------------------------------------------------------------------
-# Entry point + xref collection.
-# ---------------------------------------------------------------------------
+    func_ea = functions.get_start_of_function(ea)
+    if func_ea is None:
+        return memory.name_from_ea(ea) or f"{ea:#x}"
+    name = memory.name_from_ea(func_ea) or f"sub_{func_ea:X}"
+    return name if ea == func_ea else f"{name}+{ea - func_ea:08x}"
 
 
 def locate_xrefs() -> None:
     """
-    Locate xrefs for whatever is under the cursor: an Obj-C method's selector
-    (via its _objc_msgSend$ stubs) or an ordinary function / stub.
+    Locate xrefs for whatever is under the cursor.
+
+    An Obj-C method definition or a selector-dispatch stub (`__objc_stubs`) resolves
+    to its selector's `_objc_msgSend$` call sites; anything else resolves to the
+    function's xrefs, aggregated across its import/auth stubs.
     """
-    current_ea = idc.get_screen_ea()
-    func_name = idc.get_func_name(current_ea)
-    if not func_name:
+    current_ea = ida_kernwin.get_screen_ea()
+    func_name = functions.get_func_name(current_ea)
+    if func_name is None:
         print("No function under cursor")
         return
 
-    # Obj-C method, e.g. -[MSPSharedTripRelay _handleChunk:fromID:...].
-    if "[" in func_name:
-        try:
-            selector = func_name.split(" ")[1].split("]")[0]
-        except IndexError:
-            print("Failed to find current selector")
-            return
+    # Both an `-[Class sel]` definition and an `_objc_msgSend$sel` stub map to a selector.
+    selector = objc.selector_from_method_name(func_name) or objc.selector_from_msgsend_stub(func_name)
+    if selector is not None:
         locate_selector_xrefs(selector, module_for_ea(current_ea))
         return
 
-    # Ordinary function / stub, e.g. _some_function.
-    if func_name.startswith("_"):
-        root = re.sub(r"^_|_\d+$", "", func_name)  # strip leading _ and trailing _%d
-        locate_stub_xrefs(root)
-        return
-
-    print(f"Don't know how to locate xrefs for: {func_name}")
+    _locate_function_xrefs(current_ea, func_name)
 
 
 def locate_selector_xrefs(selector: str, module: str | None = None) -> None:
+    """
+    Show the call sites of an Obj-C `selector` via its `_objc_msgSend$` stubs.
+
+    Args:
+        selector: The selector to look up, e.g. `doFoo:withBar:`. IDA name mangling
+            (colons as underscores, `_N` duplicate suffixes) is tolerated.
+        module: Module whose xrefs should be listed first in the chooser, typically
+            the one the user is currently in.
+    """
     print(f"looking for references to selector: {selector} (module: {module})")
 
-    stubs = find_stubs_for_selector(selector)
-    if not stubs:
-        print(f"[!] No {OBJC_MSGSEND_PREFIX} stubs found for selector: {selector}")
-        print("[*] Tried:")
-        print(f"    {OBJC_MSGSEND_PREFIX}{selector}")
-        print(f"    {OBJC_MSGSEND_PREFIX}{selector.replace(':', '_')}")
-        print(f"    normalized key: {normalize_selector(selector)}")
+    selector_stubs = objc.SelectorToMsgSendCache.get().stubs_for(selector)
+    if not selector_stubs:
+        print(f"[!] No _objc_msgSend$ stubs found for selector: {selector}")
         return
 
-    print(f"[*] Found {len(stubs)} matching {OBJC_MSGSEND_PREFIX} stub(s):")
-    for ea, name in stubs:
+    print(f"[*] Found {len(selector_stubs)} matching _objc_msgSend$ stub(s):")
+    for ea, name in selector_stubs:
         print(f"    {name} at {ea:#x}")
 
-    popup_xrefs_window(selector, [ea for ea, _ in stubs], module)
+    _popup_xrefs_window(selector, [ea for ea, _ in selector_stubs], module)
 
 
-def locate_stub_xrefs(root: str) -> None:
-    print(f"looking for references to stub: {root}")
+def _locate_function_xrefs(ea: int, func_name: str) -> None:
+    """
+    Show xrefs to the function at `ea`, aggregated across its import/auth stubs.
 
-    funcs: list[int] = []
+    On a dyld_shared_cache database the cursor may be on the canonical function or
+    on any of its `j_` stubs; both resolve to the same target set through the shared
+    stub cache, so one routine's call sites are found across every module. On a
+    regular binary the stub cache is skipped entirely and this is plain xrefs to
+    the function.
 
-    def check_funcname(name: str) -> bool:
-        ea = idc.get_name_ea_simple(name)
-        if ea != idaapi.BADADDR:
-            funcs.append(ea)
-            return True
-        return False
-
-    check_funcname(f"_{root}")
-    check_funcname(f"j__{root}")
-
-    for i in count():
-        if not check_funcname(f"_{root}_{i}"):
-            break
-
-    for i in count():
-        if not check_funcname(f"j__{root}_{i}"):
-            break
-
-    if not funcs:
-        print("Could not find stub call sites")
+    Args:
+        ea: An address inside the function of interest (need not be its start).
+        func_name: Name of that function, used for messages and as a naming fallback.
+    """
+    func_ea = functions.get_start_of_function(ea)
+    if func_ea is None:
+        print(f"Could not find the start of the function: {func_name}")
         return
 
-    popup_xrefs_window(root, funcs)
+    canonical_ea = func_ea
+    targets = [func_ea]
+    if file_format.is_dsc():
+        cache = DscStubCache.get()
+        canonical_ea = cache.target_for(func_ea) or func_ea
+        targets = [canonical_ea, *cache.stubs_for(canonical_ea)]
+
+    name = memory.name_from_ea(canonical_ea) or func_name
+    print(f"looking for references to: {name} (through {len(targets)} function(s))")
+    _popup_xrefs_window(name, targets, module_for_ea(ea))
 
 
-def popup_xrefs_window(name: str, funcs: list[int], starting_module: str | None = None) -> None:
-    funcs_names = {idc.get_func_name(ea) for ea in funcs}
+def _popup_xrefs_window(name: str, funcs: list[int], starting_module: str | None = None) -> None:
+    """
+    Print and pop up a chooser of the code xrefs to any of `funcs`.
+
+    Xrefs originating from within `funcs` themselves (the stubs cross-referencing
+    each other) are dropped, and xrefs from `starting_module` are listed first.
+
+    Args:
+        name: Display name of the target, used for the chooser title and as the key
+            remembering the last visited xref.
+        funcs: Addresses whose incoming xrefs are aggregated (the canonical function
+            and its stubs).
+        starting_module: Module whose xrefs sort to the top of the list.
+    """
+    func_starts = set(funcs)
     xrefs = [
-        Xref(get_name_for_ea(xref.frm), xref.frm, module_for_ea(xref.frm))
+        Xref(_display_name_for_ea(frm), frm, module_for_ea(frm))
         for func_ea in funcs
-        for xref in idautils.XrefsTo(func_ea)
-        if idc.get_func_name(xref.frm) not in funcs_names
+        for frm in get_xrefs_to(func_ea)
+        if functions.get_start_of_function(frm) not in func_starts
     ]
     # Show xrefs from the same module as the cursor first.
     xrefs.sort(key=lambda x: x.module != starting_module)
 
     if not xrefs:
-        print("[!] Found stub(s), but IDA has no code xrefs to them")
+        print("[!] Found target(s), but IDA has no code xrefs to them")
         return
 
     for x in xrefs:
@@ -230,10 +175,20 @@ def popup_xrefs_window(name: str, funcs: list[int], starting_module: str | None 
     last_addr = _LAST_XREF_BY_NAME.get(name)
     default_idx = next((i for i, x in enumerate(xrefs) if x.address == last_addr), None)
 
-    XrefChooser(f"Xrefs to {name}", name, xrefs, default_idx).show()
+    _XrefChooser(f"Xrefs to {name}", name, xrefs, default_idx).show()
 
 
-class XrefChooser(Choose):
+class _XrefChooser(Choose):
+    """
+    Modal chooser listing `Xref` rows; selecting a row jumps to it and remembers it.
+
+    Args:
+        title: Window title.
+        target_name: Key under which the last visited xref is remembered.
+        xrefs: The rows to display.
+        default_idx: Row to pre-select, if any.
+    """
+
     def __init__(self, title: str, target_name: str, xrefs: list[Xref], default_idx: int | None = None):
         Choose.__init__(
             self,
@@ -270,4 +225,10 @@ class XrefChooser(Choose):
         return (Choose.NOTHING_CHANGED,)
 
     def show(self) -> bool:
+        """
+        Display the chooser modally.
+
+        Returns:
+            True if the chooser was shown successfully.
+        """
         return self.Show(True) >= 0
