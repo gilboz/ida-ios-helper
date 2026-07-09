@@ -15,6 +15,7 @@ import ida_kernwin
 import idaapi
 from ida_idaapi import plugin_t
 from ida_kernwin import UI_Hooks, action_desc_t
+from idahelper import runtime
 
 from .config import config
 
@@ -30,7 +31,11 @@ class Component:
             `experimental_components`) and in load/mount logs.
         description: Human-readable summary of what the component does.
         core: The plugin core that owns this component.
+        ui_only: Whether the component is only meaningful with a UI present; ui-only
+            components are skipped entirely when running headless (idalib/idat).
     """
+
+    ui_only: bool = False
 
     def __init__(self, name: str, description: str, core: "PluginCore"):
         self.name = name
@@ -76,7 +81,13 @@ class PluginCore:
         self.loaded = False
         self.mounted = False
         all_components = [factory(self) for factory in component_factories]
-        self._components = [component for component in all_components if config.is_component_enabled(component.name)]
+        components = [component for component in all_components if config.is_component_enabled(component.name)]
+        if runtime.is_headless():
+            skipped = [component.name for component in components if component.ui_only]
+            if skipped:
+                print(f"[{name}] headless mode, skipping ui-only components: {', '.join(skipped)}")
+            components = [component for component in components if not component.ui_only]
+        self._components = components
 
         # we can 'defer' the load of the plugin core a little bit. this
         # ensures that all the other plugins (eg, decompilers) can get loaded
@@ -323,6 +334,9 @@ class UIActionsComponentUIHooks(idaapi.UI_Hooks):
 
 # Another common type of component is installing ui actions. This is a helper class to make it easier.
 class UIActionsComponent(Component):
+    # Menu actions and popup hooks have no meaning without a UI.
+    ui_only = True
+
     def __init__(
         self, name: str, description: str, core: PluginCore, action_factories: list[Callable[[PluginCore], UIAction]]
     ):
