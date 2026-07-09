@@ -86,12 +86,15 @@ class IOSHelperToggleActionHandler(ida_kernwin.action_handler_t):
 
 
 def get_modules_for_file() -> list[ComponentFactory]:
+    is_dsc = file_format.is_dsc()
+    enable_objc = (is_dsc or file_format.is_objc()) and config.is_feature_enabled(Feature.OBJC)
+    enable_swift = (is_dsc or file_format.is_swift()) and config.is_feature_enabled(Feature.SWIFT)
     return [
         *shared_modules(),
-        *(objc_plugins() if file_format.is_objc() and config.is_feature_enabled(Feature.OBJC) else []),
-        *(swift_plugins() if file_format.is_swift() and config.is_feature_enabled(Feature.SWIFT) else []),
+        *(objc_plugins() if enable_objc else []),
+        *(swift_plugins() if enable_swift else []),
         *(kernel_cache_plugins() if file_format.is_kernelcache() else []),
-        *(dsc_plugins() if file_format.is_dsc() else []),
+        *(dsc_plugins() if is_dsc else []),
     ]
 
 
@@ -102,11 +105,9 @@ def shared_modules() -> list[ComponentFactory]:
         clang_block_args_analyzer_component,
         clang_block_optimizer_component,
         jump_to_string_component,
-        objc_optimizers_component,
         range_condition_optimizer_component,
         mark_outline_functions_component,
         show_segment_xrefs_component,
-        globals_component,
     ]
     if config.debug:
         from ioshelper.debug import dump_ps_component
@@ -119,6 +120,7 @@ def objc_plugins() -> list[ComponentFactory]:
     plugins: list[ComponentFactory] = [
         oslog_component,
         objc_xrefs_component,
+        objc_optimizers_component,
         objc_arg_renamer_component,
         mass_objc_arg_renamer_component,
         objc_sugar_component,
@@ -156,6 +158,7 @@ def kernel_cache_plugins() -> list[ComponentFactory]:
         apply_kalloc_type_component,
         apply_pac_component,
         create_type_from_kalloc_component,
+        globals_component,
     ]
 
 
