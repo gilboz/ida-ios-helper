@@ -175,3 +175,7 @@ cython_debug/
 
 # Mac cache file
 .DS_Store
+
+# WIP: do not commit
+docs/
+CLAUDE.md
