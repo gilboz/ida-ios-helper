@@ -14,6 +14,7 @@ from .plugins.common.range_condition import range_condition_optimizer_component
 from .plugins.common.run_callback import run_callback
 from .plugins.common.segment_xrefs import show_segment_xrefs_component
 from .plugins.dsc.organize_functions import organize_functions_component
+from .plugins.dsc.stub_calls import STUB_CALLS_COMPONENT_NAME, stub_calls_component
 from .plugins.kernelcache.cpp_vtbl import jump_to_vtable_component
 from .plugins.kernelcache.func_renamers import (
     apply_pac_component,
@@ -144,9 +145,13 @@ def swift_plugins() -> list[ComponentFactory]:
 
 
 def dsc_plugins() -> list[ComponentFactory]:
-    return [
+    plugins: list[ComponentFactory] = [
         organize_functions_component,
     ]
+    # WIP: stub-call retargeting is unreliable, so it is opt-in.
+    if config.is_experimental_enabled(STUB_CALLS_COMPONENT_NAME):
+        plugins.append(stub_calls_component)
+    return plugins
 
 
 def kernel_cache_plugins() -> list[ComponentFactory]:
