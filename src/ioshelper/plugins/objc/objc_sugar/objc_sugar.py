@@ -16,8 +16,6 @@ from idahelper.pseudocode import Anchor, Color, Line, Pseudocode, Section, Token
 
 from .tokens import drop_trailing_comma
 
-# Object-C class refs are rendered as `OBJC_CLASS___<Name>`.
-OBJC_CLASS_PREFIX = "OBJC_CLASS___"
 # Visible characters a line may consist of (besides whitespace) and still be merged
 # upward after its selector/class argument was removed — closers and separators.
 CLOSER_CHARS = frozenset(")]};,")
@@ -167,7 +165,7 @@ def _remove_objc_args(line: Line, index_to_sel: dict[int, str], class_indices_to
                 continue  # a different string happens to share the anchor — leave it
             del index_to_sel[anchor.index]
             _mark_selector(tokens, i, anchor.index, to_delete)
-        elif token.color in (Color.DEMNAME, Color.IMPNAME) and token.text.startswith(OBJC_CLASS_PREFIX):
+        elif token.color in (Color.DEMNAME, Color.IMPNAME) and objc.is_class_ref(token.text):
             ref_index = anchor.index - 1  # the `&` ref is the item before its object
             if ref_index in class_indices_to_remove:
                 class_indices_to_remove.discard(ref_index)

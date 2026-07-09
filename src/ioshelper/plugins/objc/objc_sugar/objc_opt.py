@@ -21,9 +21,9 @@ __all__ = ["RUNTIME_BRACKET_CALLS", "rewrite_opt_calls"]
 
 from dataclasses import replace
 
+from idahelper import objc
 from idahelper.pseudocode import Anchor, Color, Token
 
-from .objc_sugar import OBJC_CLASS_PREFIX
 from .selectors import make_selector_token
 from .tokens import MAX_REWRITES, find_callee, open_paren_after, split_args
 
@@ -117,8 +117,10 @@ def _opt_arg(tokens: list[Token], span: tuple[int, int]) -> list[Token]:
         while j <= end and (tokens[j].anchor is not None or tokens[j].is_blank):
             j += 1
         cls = tokens[j] if j <= end else None
-        if cls is not None and cls.color in (Color.DEMNAME, Color.IMPNAME) and cls.text.startswith(OBJC_CLASS_PREFIX):
-            return [replace(cls, text=cls.text[len(OBJC_CLASS_PREFIX) :])]
+        if cls is not None and cls.color in (Color.DEMNAME, Color.IMPNAME):
+            cls_name = objc.class_name_from_ref(cls.text)
+            if cls_name is not None:
+                return [replace(cls, text=cls_name)]
     return tokens[i : end + 1]
 
 

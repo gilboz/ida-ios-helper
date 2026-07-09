@@ -96,7 +96,8 @@ def _selector_arg_renames(name: str, args: list[lvar_t]) -> dict[str, str]:
         return {}
 
     # "-[Class doFoo:withBar:]" -> ["doFoo", "withBar", ""]
-    keyword_pieces = name.split(" ")[1].split("]")[0].split(":")
+    selector = objc.selector_from_method_name(name) or ""
+    keyword_pieces = selector.split(":")
 
     renames: dict[str, str] = {}
     for pos in range(1, len(args)):  # pos 0 is the receiver (self), left untouched
