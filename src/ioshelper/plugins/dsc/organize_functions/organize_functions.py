@@ -97,7 +97,7 @@ def _folder_for_segment(segment: Segment) -> str | None:
     Args:
         segment: An executable segment, named like `module:__suffix` in a DSC database.
     """
-    suffix = segment.name.rsplit(":", 1)[-1]
+    suffix = segment.suffix
     module = segment.base_name
 
     if module.startswith(DSC_SEGMENT_PREFIX):
