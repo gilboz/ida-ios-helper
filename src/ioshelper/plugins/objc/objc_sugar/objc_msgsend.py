@@ -17,7 +17,7 @@ from dataclasses import replace
 from ida_hexrays import Hexrays_Hooks, cfunc_t, vdui_t
 from ida_kernwin import simpleline_t
 from ida_pro import strvec_t
-from idahelper.pseudocode import Anchor, Color, Line, Token
+from idahelper.pseudocode import Anchor, AnchorKind, Color, Line, Token
 
 from .selectors import handle_selector_double_click, handle_selector_xref, make_selector_token, register_selectors
 from .tokens import MAX_REWRITES, drop_trailing_comma, find_callee, open_paren_after, split_args
@@ -174,10 +174,45 @@ def _selector_of(tokens: list[Token], span: tuple[int, int]) -> tuple[str, Ancho
     if len(visible) < 2 or visible[0] != '"' or visible[-1] != '"':
         return None
     selector = visible[1:-1]
-    anchor = next((token.anchor for token in sub if token.anchor is not None), None)
+    anchor = _string_anchor(sub)
     if not selector or anchor is None:
         return None
     return selector, anchor
+
+
+def _string_anchor(tokens: list[Token]) -> Anchor | None:
+    """
+    The ctree item that owns the selector string literal in an argument span.
+
+    Bind to the string's own item — the last `CITEM` anchor governing the visible
+    string text — not merely the first anchor. Hex-rays prefixes the span with an
+    `ITP` argument-position marker (not a ctree item) and often the enclosing call
+    expression's own `CITEM` anchor; anchoring the rewritten selector to either would
+    make double-click / `x` resolve to the wrong item (the whole call) or nothing (the
+    `ITP` marker) instead of the selector, so both are skipped.
+
+    The string's `cot_str` anchor can sit either just before or just after the opening
+    `"`, so scanning stops at the string *body* (the first name-colored run) rather
+    than at the quote. A very long selector that hex-rays wraps onto continuation lines
+    carries no `cot_str` anchor at all; there the enclosing call's anchor is the best
+    (and only) `CITEM` available, so it is used as a fallback.
+
+    Args:
+        tokens: The selector argument span's tokens (as sliced by `_selector_of`).
+
+    Returns:
+        The string's `CITEM` anchor, the enclosing call's anchor when the wrapped
+        string carries none of its own, or `None` if no `CITEM` anchor precedes
+        the string body.
+    """
+    owner: Anchor | None = None
+    for token in tokens:
+        if token.anchor is not None:
+            if token.anchor.kind == AnchorKind.CITEM:
+                owner = token.anchor
+        elif token.color is not None and token.color != Color.SYMBOL:
+            break  # reached the string body
+    return owner
 
 
 def _next_content(tokens: list[Token], i: int) -> int:
