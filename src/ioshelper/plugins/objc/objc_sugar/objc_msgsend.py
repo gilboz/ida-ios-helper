@@ -69,7 +69,7 @@ class objc_msgsend_hexrays_hooks_t(Hexrays_Hooks):
         if merged_selectors:
             register_selectors(cfunc.entry_ea, merged_selectors)
         tagged_lines = line.to_tagged().split("\n")
-        merged = merge_wrapped_lines(tagged_lines)
+        merged = merge_wrapped_lines(tagged_lines, cfunc.hdrlines)
         if not merged_selectors and not colons_stripped and len(merged) == len(tagged_lines):
             return 0  # nothing changed: no rewrite, no runtime sugar, no colon cleanup, no merge
         write_back(ps, merged)
@@ -328,7 +328,7 @@ def write_back(ps: strvec_t, new_lines: list[str]) -> None:
         ps.erase(line)
 
 
-def merge_wrapped_lines(tagged_lines: list[str]) -> list[str]:
+def merge_wrapped_lines(tagged_lines: list[str], code_start: int = 0) -> list[str]:
     """
     Fold wrapped continuation lines back together where the result still fits.
 
@@ -338,10 +338,23 @@ def merge_wrapped_lines(tagged_lines: list[str]) -> list[str]:
     space, or none after an opener / before a closer) as long as the joined visible
     text stays within `MAX_LINE_LENGTH`. Statement boundaries sit at depth 0
     and are never merged, so distinct statements stay on their own lines.
+
+    Only the code section is folded. A wrapped prototype's parameter lines also sit
+    at depth > 0, but folding them shrinks the header below the decompiler's recorded
+    `cfunc_t.hdrlines`, pushing the first body statements above that boundary —
+    where Hex-Rays' item→coordinate lookup no longer finds them, silently dropping
+    those items' xrefs.
+
+    Args:
+        tagged_lines: The function's tagged pseudocode lines.
+        code_start: The index of the first `Section.CODE` line, i.e.
+            `cfunc_t.hdrlines` (see `idahelper.pseudocode.Pseudocode.section_of`).
+            Lines before it pass through untouched.
     """
+    header = tagged_lines[:code_start]
     merged: list[Line] = []
     depth = 0
-    for tagged in tagged_lines:
+    for tagged in tagged_lines[code_start:]:
         line = Line.parse(tagged)
         at_continuation = depth > 0
         depth += _bracket_balance(line)
@@ -349,7 +362,7 @@ def merge_wrapped_lines(tagged_lines: list[str]) -> list[str]:
             _append_continuation(merged[-1], line)
         else:
             merged.append(line)
-    return [line.to_tagged() for line in merged]
+    return header + [line.to_tagged() for line in merged]
 
 
 def _bracket_balance(line: Line) -> int:
