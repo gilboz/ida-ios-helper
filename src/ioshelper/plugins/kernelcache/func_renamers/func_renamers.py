@@ -76,7 +76,7 @@ class LocalRenameHooks(Hexrays_Hooks):
         if new_maturity != ida_hexrays.CMAT_CASTED:
             return 0
 
-        with Modifications(cfunc.entry_ea, func_lvars=cfunc.get_lvars()) as modifications:
+        with Modifications(cfunc.entry_ea, func_lvars=cfunc.get_lvars(), during_decompilation=True) as modifications:
             process_function_calls(cfunc.mba, get_all_xref_matcher(), modifications)
 
         return 0

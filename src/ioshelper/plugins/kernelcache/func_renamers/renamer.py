@@ -15,10 +15,11 @@ from .visitor import Call, FuncXref, IndirectCallXref, ParsedParam, SourceXref
 class Modifications:
     """Represents the modifications to be applied from a traversal of a single function"""
 
-    def __init__(self, func_ea: int, func_lvars: lvars_t | None = None):
+    def __init__(self, func_ea: int, func_lvars: lvars_t | None = None, *, during_decompilation: bool = False):
         self.func_ea = func_ea
         self.has_func_name = memory.is_user_defined_name(func_ea)
         self.lvars = func_lvars
+        self._during_decompilation = during_decompilation
         self._local_modifications: dict[str, VariableModification] = {}
         self._global_modifications: dict[int, VariableModification] = {}
         self._type_modifications: dict[tuple[str, int], VariableModification] = {}
@@ -57,7 +58,12 @@ class Modifications:
     def _apply_local_modifications(self):
         """Apply local modifications"""
         if self._local_modifications and self.lvars is not None:
-            lvars.perform_lvar_modifications(self.func_ea, self.lvars, self._local_modifications, temp_fallback=True)
+            if self._during_decompilation:
+                lvars.perform_lvar_modifications_during_decompilation(
+                    self.func_ea, self.lvars, self._local_modifications
+                )
+            else:
+                lvars.perform_lvar_modifications(self.func_ea, self.lvars, self._local_modifications)
 
     def _apply_global_modifications(self):
         """Apply global modifications"""
