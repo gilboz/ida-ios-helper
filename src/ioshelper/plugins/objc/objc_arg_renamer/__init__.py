@@ -8,7 +8,7 @@ __all__ = [
 import ida_kernwin
 import idaapi
 from ida_kernwin import action_handler_t
-from idahelper import functions, memory, objc, widgets
+from idahelper import functions, memory, objc
 
 from ioshelper.base.reloadable_plugin import UIAction, UIActionsComponent
 
@@ -69,8 +69,8 @@ class RenameObjcArgsAction(action_handler_t):
             print("[Error] Not inside a function")
             return 0
 
-        if rename_objc_method_args(ctx.cur_func) and ctx.widget is not None:
-            widgets.refresh_widget(ctx.widget)
+        # No explicit refresh: renaming through the focused pseudocode view refreshes it in place
+        rename_objc_method_args(ctx.cur_func)
         return 0
 
     def update(self, ctx) -> int:
