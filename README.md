@@ -396,6 +396,7 @@ dyld_shared_cache databases:
 |---|---|:-:|
 | `dsc-stub-calls` | Retarget dyld_shared_cache import-stub calls to the real function with a clean name (experimental, opt-in) | |
 | `dsc-organize-functions` | Organize the Functions window into folders by module and segment kind (stubs, ...) | ✔ |
+| `dsc-stub-modules` | Report the dyld_shared_cache modules to load so the current function's stub calls resolve (right-click a function; IDA 9.4+) | ✔ |
 
 Kernelcache:
 

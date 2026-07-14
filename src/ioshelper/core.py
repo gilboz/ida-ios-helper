@@ -15,6 +15,7 @@ from .plugins.common.run_callback import run_callback
 from .plugins.common.segment_xrefs import show_segment_xrefs_component
 from .plugins.dsc.organize_functions import organize_functions_component
 from .plugins.dsc.stub_calls import STUB_CALLS_COMPONENT_NAME, stub_calls_component
+from .plugins.dsc.stub_modules import report_stub_modules_component
 from .plugins.kernelcache.cpp_vtbl import jump_to_vtable_component
 from .plugins.kernelcache.func_renamers import (
     apply_pac_component,
@@ -147,6 +148,9 @@ def swift_plugins() -> list[ComponentFactory]:
 def dsc_plugins() -> list[ComponentFactory]:
     plugins: list[ComponentFactory] = [
         organize_functions_component,
+        # Reporting which modules back a function's stubs needs the dscu service (IDA 9.4+);
+        # on older IDA the action degrades to a one-line "requires 9.4+" message.
+        report_stub_modules_component,
     ]
     # WIP: stub-call retargeting is unreliable, so it is opt-in.
     if config.is_experimental_enabled(STUB_CALLS_COMPONENT_NAME):
