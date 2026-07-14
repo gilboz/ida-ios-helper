@@ -37,6 +37,7 @@ find_idat() {
     for c in \
         "$(command -v idat64 2>/dev/null || true)" \
         "$(command -v idat   2>/dev/null || true)" \
+        "/Applications/IDA Professional 9.4.app/Contents/MacOS/idat" \
         "/Applications/IDA Professional 9.3.app/Contents/MacOS/idat" \
         "/Applications/IDA Professional 9.2.app/Contents/MacOS/idat" \
         "/Applications/IDA Professional 9.1.app/Contents/MacOS/idat" \

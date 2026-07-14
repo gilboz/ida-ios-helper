@@ -85,7 +85,7 @@ bash src/scripts/probe_func.sh /path/to/Binary.i64 0x10001A41C mc > /tmp/mc.txt
 
 ## Environment
 
-- `$IDAT` — override the `idat` binary path. Otherwise the script auto-discovers macOS install locations from IDA Professional 9.0–9.3 and IDA Pro 8.4.
+- `$IDAT` — override the `idat` binary path. Otherwise the script auto-discovers macOS install locations from IDA Professional 9.0–9.4 (preferring the newest) and IDA Pro 8.4.
 - Requires that the project's plugin code is importable from the IDA Python environment (it is — `src/scripts/probe_func.py` adds `src/` to `sys.path`).
 
 ## What it actually does
