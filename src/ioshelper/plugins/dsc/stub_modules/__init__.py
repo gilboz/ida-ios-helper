@@ -26,7 +26,7 @@ report_stub_modules_component = UIActionsComponent.factory(
             ACTION_ID,
             ida_kernwin.action_desc_t(
                 ACTION_ID,
-                "Report modules to load for this function's stubs",
+                "[ios-helper] Report modules to load for this function's stubs",
                 ReportStubModulesActionHandler(),
             ),
             menu_location=UIAction.base_location(core),
