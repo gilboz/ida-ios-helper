@@ -422,9 +422,20 @@ class HexraysHookComponent(Component):
 
 
 class StartupScriptComponent(Component):
-    def __init__(self, name: str, description: str, core: PluginCore, callbacks: list[Callable[[], None]]):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        core: PluginCore,
+        callbacks: list[Callable[[], None]],
+        *,
+        ui_only: bool = False,
+    ):
         super().__init__(name, description, core)
         self._callbacks = callbacks
+        # A callback that only makes sense with a UI (e.g. it prompts the user) sets this so
+        # it is skipped when mounting headlessly, like the ui-action components.
+        self.ui_only = ui_only
 
     def load(self):
         return True
@@ -441,5 +452,7 @@ class StartupScriptComponent(Component):
         pass
 
     @staticmethod
-    def factory(name: str, description: str, callbacks: list[Callable[[], None]]) -> ComponentFactory:
-        return lambda core: StartupScriptComponent(name, description, core, callbacks)
+    def factory(
+        name: str, description: str, callbacks: list[Callable[[], None]], *, ui_only: bool = False
+    ) -> ComponentFactory:
+        return lambda core: StartupScriptComponent(name, description, core, callbacks, ui_only=ui_only)
