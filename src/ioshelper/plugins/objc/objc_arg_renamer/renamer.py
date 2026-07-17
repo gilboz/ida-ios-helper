@@ -30,6 +30,8 @@ from idahelper import memory, naming, objc
 from idahelper.ast import cfunc, lvars
 from idahelper.ast.lvars import VariableModification
 
+from ioshelper.base.config import config
+
 # The implicit argument follows one of these words: `initWithFrame:` -> `Frame`.
 _PREPOSITIONS = ("with", "for", "at", "from", "to", "of", "in", "by", "using")
 # The implicit argument is the object of one of these leading verbs: `addObject:` -> `Object`.
@@ -115,9 +117,13 @@ def rename_objc_method_args_during_decompilation(decompiled: cfunc_t) -> bool:
     modifications = _selector_arg_modifications(name, decompiled.arguments)
     if not modifications:
         return False
-    return lvars.perform_lvar_modifications_during_decompilation(
+    renamed = lvars.perform_lvar_modifications_during_decompilation(
         decompiled.entry_ea, decompiled.get_lvars(), modifications
     )
+    if renamed and config.debug:
+        renames = ", ".join(f"{old} -> {mod.name}" for old, mod in modifications.items())
+        print(f"[Debug] objc-arg-renamer: {name}: {renames}")
+    return renamed
 
 
 def _selector_arg_modifications(name: str, args: list[lvar_t]) -> dict[str, VariableModification]:
