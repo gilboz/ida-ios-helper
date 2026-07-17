@@ -43,10 +43,29 @@ _VERBS = (
 # Second selector piece of a delegate callback, where the first piece names the sender.
 _DELEGATE_PREFIXES = ("did", "will", "should")
 
+# Verbs that move a thing to a place: `add <X> to <Y>`. For these, in `addAmountToBalance:`
+# the argument is the verb's object (`Amount`, the thing added), while `ToBalance` only names
+# the destination — the reverse of what the general preposition rule would pick. Kept narrow
+# on purpose: property accessors (`set`/`get`) are excluded because their `XToY` is usually a
+# single property name (`setFitToWidth:` sets `fitToWidth`), and source `from` is excluded
+# because there the argument *is* the source (`copyPropertiesFromBuffer:` -> `Buffer`).
+_TRANSFER_VERBS = (
+    "add", "insert", "append", "push", "enqueue", "send", "post", "write", "save", "copy", "move", "apply",
+)  # fmt: skip
+# Destination markers written as whole camel words (so the `To` in `AmountToBalance` matches
+# but the `to` inside `Photo`/`Auto` does not). Case-sensitive on purpose.
+_DESTINATION_WORDS = ("To", "Into", "Onto")
+
 # The keyword wording is matched case-insensitively (developers are not always consistent),
 # but the captured argument name must start a camel word (an uppercase letter).
 _PREPOSITION_SUFFIX = re.compile(rf".*(?i:{'|'.join(_PREPOSITIONS)})([A-Z][A-Za-z0-9]*)$")
 _VERB_PREFIX = re.compile(rf"(?i:{'|'.join(_VERBS)})([A-Z][A-Za-z0-9]*)$")
+# A transfer verb's object sitting before a destination word: `add` `Amount` `To` `Balance`.
+# The object is captured non-greedily so it stops at the first destination word, which must
+# itself begin a new camel word (be followed by an uppercase letter).
+_VERB_OBJECT_BEFORE_DESTINATION = re.compile(
+    rf"(?i:{'|'.join(_TRANSFER_VERBS)})([A-Z][A-Za-z0-9]*?)(?:{'|'.join(_DESTINATION_WORDS)})[A-Z]"
+)
 
 
 def rename_all_objc_method_args() -> None:
@@ -158,6 +177,10 @@ def _guess_implicit_arg_name(keyword_pieces: list[str]) -> str | None:
 
     * Delegate callbacks -- when the second piece starts with `did`/`will`/`should`, the
       first piece names the sender: `tableView:didSelectRowAtIndexPath:` -> `tableView`.
+    * Transfer verb object before a destination -- the object of a leading transfer verb
+      (`add`/`send`/`copy`/...) that sits before a `To`/`Into`/`Onto` destination:
+      `addAmountToBalance:` -> `Amount` (the thing added), not `Balance` (where it goes).
+      Checked before the general preposition rule, which would otherwise pick the destination.
     * Prepositions -- the words after the last `with`/`for`/`at`/... : `initWithFrame:` -> `Frame`.
     * Leading verbs -- the object of `set`/`add`/`remove`/... : `addObserver:` -> `Observer`.
 
@@ -172,6 +195,8 @@ def _guess_implicit_arg_name(keyword_pieces: list[str]) -> str | None:
         return None
     if len(keyword_pieces) > 1 and keyword_pieces[1].lower().startswith(_DELEGATE_PREFIXES):
         return first_piece
+    if (match := _VERB_OBJECT_BEFORE_DESTINATION.match(first_piece)) is not None:
+        return match.group(1)
     if (match := _PREPOSITION_SUFFIX.match(first_piece)) is not None:
         return match.group(1)
     if (match := _VERB_PREFIX.match(first_piece)) is not None:
