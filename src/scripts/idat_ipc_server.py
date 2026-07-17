@@ -73,6 +73,9 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         "ioshelper.plugins.objc.objc_sugar.objc_opt",
         "ioshelper.plugins.objc.objc_sugar.objc_msgsend",
         "ioshelper.plugins.objc.objc_msgsend_args.optimizer",
+        "ioshelper.plugins.objc.objc_arg_renamer.renamer",
+        # Reloaded after `renamer` so the hook re-imports the fresh rename function.
+        "ioshelper.plugins.objc.objc_arg_renamer.hook",
         "ioshelper.plugins.objc.oslog.os_log",
         "ioshelper.plugins.objc.oslog.log_macro_optimizer",
         "ioshelper.plugins.objc.oslog.log_enabled_optimizer",
@@ -93,6 +96,7 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
 
     from ioshelper.base.config import Config
     from ioshelper.plugins.dsc.stub_calls.optimizer import stub_call_optimizer_t
+    from ioshelper.plugins.objc.objc_arg_renamer.hook import ObjcArgRenameHook
     from ioshelper.plugins.objc.objc_msgsend_args import OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME
     from ioshelper.plugins.objc.objc_msgsend_args.optimizer import objc_msgsend_argcount_optimizer_t
     from ioshelper.plugins.objc.objc_sugar.objc_msgsend import objc_msgsend_hexrays_hooks_t
@@ -111,6 +115,8 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         # Match core.objc_plugins order: msgsend installed before sugar so it fires after it.
         objc_msgsend_hexrays_hooks_t,
         objc_selector_hexrays_hooks_t,
+        # Maturity hook (different event from the text hooks above, order-independent).
+        ObjcArgRenameHook,
     ):
         try:
             h = cls()

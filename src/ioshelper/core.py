@@ -26,7 +26,11 @@ from .plugins.kernelcache.func_renamers import (
 from .plugins.kernelcache.generic_calls_fix import generic_calls_fix_component
 from .plugins.kernelcache.kalloc_type import apply_kalloc_type_component, create_type_from_kalloc_component
 from .plugins.kernelcache.obj_this import this_arg_fixer_component
-from .plugins.objc.objc_arg_renamer import mass_objc_arg_renamer_component, objc_arg_renamer_component
+from .plugins.objc.objc_arg_renamer import (
+    auto_objc_arg_renamer_component,
+    mass_objc_arg_renamer_component,
+    objc_arg_renamer_component,
+)
 from .plugins.objc.objc_msgsend_args import (
     OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME,
     objc_msgsend_argcount_component,
@@ -126,6 +130,7 @@ def objc_plugins() -> list[ComponentFactory]:
         objc_optimizers_component,
         objc_arg_renamer_component,
         mass_objc_arg_renamer_component,
+        auto_objc_arg_renamer_component,
         objc_sugar_component,
     ]
     # WIP: selector-driven objc_msgSend arg-count fixup is unreliable, so it is opt-in.

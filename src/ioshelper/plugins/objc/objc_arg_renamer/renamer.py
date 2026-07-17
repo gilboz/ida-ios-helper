@@ -18,12 +18,16 @@ user-applied prototype are preserved. `rename_all_objc_method_args` drives this 
 whole database.
 """
 
-__all__ = ["rename_all_objc_method_args", "rename_objc_method_args"]
+__all__ = [
+    "rename_all_objc_method_args",
+    "rename_objc_method_args",
+    "rename_objc_method_args_during_decompilation",
+]
 
 import re
 
 from ida_funcs import func_t
-from ida_hexrays import DecompilationFailure, lvar_t
+from ida_hexrays import DecompilationFailure, cfunc_t, lvar_t
 from idahelper import functions, memory, naming, objc
 from idahelper.ast import cfunc, lvars
 from idahelper.ast.lvars import VariableModification
@@ -76,12 +80,42 @@ def rename_objc_method_args(func: func_t) -> bool:
     if decompiled is None:
         return False
 
-    renames = _selector_arg_renames(name, decompiled.arguments)
-    if not renames:
+    modifications = _selector_arg_modifications(name, decompiled.arguments)
+    if not modifications:
+        return False
+    return lvars.perform_lvar_modifications(func.start_ea, decompiled.get_lvars(), modifications)
+
+
+def rename_objc_method_args_during_decompilation(decompiled: cfunc_t) -> bool:
+    """
+    Rename the arguments of the in-flight decompilation `decompiled` based on its selector.
+
+    For use inside a decompilation event (e.g. a `maturity` hook): the renames are written
+    through the saved-settings fast path and patched onto the live `lvar_t`s, so no extra
+    decompilation is triggered.
+
+    Args:
+        decompiled: The function's in-flight decompilation.
+
+    Returns:
+        `True` if the function is an Obj-C method and at least one argument was renamed.
+    """
+    name = memory.name_from_ea(decompiled.entry_ea)
+    if name is None or not objc.is_objc_method(name):
         return False
 
-    modifications = {old: VariableModification(name=new) for old, new in renames.items()}
-    return lvars.perform_lvar_modifications(func.start_ea, decompiled.get_lvars(), modifications)
+    modifications = _selector_arg_modifications(name, decompiled.arguments)
+    if not modifications:
+        return False
+    return lvars.perform_lvar_modifications_during_decompilation(
+        decompiled.entry_ea, decompiled.get_lvars(), modifications
+    )
+
+
+def _selector_arg_modifications(name: str, args: list[lvar_t]) -> dict[str, VariableModification]:
+    """Build the rename modifications for the still-default arguments of the method named `name`."""
+    renames = _selector_arg_renames(name, args)
+    return {old: VariableModification(name=new) for old, new in renames.items()}
 
 
 def _selector_arg_renames(name: str, args: list[lvar_t]) -> dict[str, str]:

@@ -1,4 +1,5 @@
 __all__ = [
+    "auto_objc_arg_renamer_component",
     "mass_objc_arg_renamer_component",
     "objc_arg_renamer_component",
     "rename_all_objc_method_args",
@@ -10,8 +11,9 @@ import idaapi
 from ida_kernwin import action_handler_t
 from idahelper import functions, memory, objc
 
-from ioshelper.base.reloadable_plugin import UIAction, UIActionsComponent
+from ioshelper.base.reloadable_plugin import HexraysHookComponent, UIAction, UIActionsComponent
 
+from .hook import ObjcArgRenameHook
 from .renamer import rename_all_objc_method_args, rename_objc_method_args
 
 LOCAL_ACTION_ID = "ioshelper:rename_objc_args"
@@ -44,6 +46,12 @@ objc_arg_renamer_component = UIActionsComponent.factory(
             dynamic_menu_add=dynamic_menu_add,
         )
     ],
+)
+
+auto_objc_arg_renamer_component = HexraysHookComponent.factory(
+    "objc-arg-renamer-auto",
+    "Rename Obj-C method arguments automatically on decompilation",
+    [ObjcArgRenameHook],
 )
 
 mass_objc_arg_renamer_component = UIActionsComponent.factory(

@@ -275,6 +275,7 @@ def _install_ioshelper_hooks() -> None:
         sys.path.insert(0, repo_src)
 
     try:
+        from ioshelper.plugins.objc.objc_arg_renamer.hook import ObjcArgRenameHook
         from ioshelper.plugins.swift.swift_oslog.log_hook import SwiftLogRewriteHook
         from ioshelper.plugins.swift.swift_types.prolog_rewrite import SwiftPrologRewriteHook
         from ioshelper.plugins.swift.swift_types.swift_types import SwiftClassCallHook
@@ -282,7 +283,7 @@ def _install_ioshelper_hooks() -> None:
         print(f"[probe] failed to import hooks: {exc!r}", file=sys.stderr)
         return
 
-    for cls in (SwiftClassCallHook, SwiftPrologRewriteHook, SwiftLogRewriteHook):
+    for cls in (SwiftClassCallHook, SwiftPrologRewriteHook, SwiftLogRewriteHook, ObjcArgRenameHook):
         try:
             h = cls()
             ok = h.hook()
