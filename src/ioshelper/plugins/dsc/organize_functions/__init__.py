@@ -12,7 +12,7 @@ ACTION_ID_ALL = "ioshelper:organize_dsc_functions_all"
 
 organize_functions_component = UIActionsComponent.factory(
     "dsc-organize-functions",
-    "Organize the Functions window into folders by module and segment kind (stubs, ...)",
+    "Organize the Functions window into folders: loaded modules' code by module, dyld stubs under 'Dyld Stubs'",
     [
         lambda core: UIAction(
             ACTION_ID_NEW,
@@ -40,8 +40,7 @@ class OrganizeNewFunctionsAction(action_handler_t):
     """Differential pass: only functions still at the tree root (e.g. a freshly loaded dylib)."""
 
     def activate(self, ctx: ida_kernwin.action_ctx_base_t) -> int:
-        stats = organize_functions(only_root=True)
-        print(f"[iOSHelper] organized functions: {stats.moved} moved, {stats.skipped} skipped, {stats.failed} failed")
+        organize_functions(only_root=True)
         return 1
 
     def update(self, ctx) -> int:
@@ -52,8 +51,7 @@ class OrganizeAllFunctionsAction(action_handler_t):
     """Full pass: move every function to its computed folder, wherever it currently is."""
 
     def activate(self, ctx: ida_kernwin.action_ctx_base_t) -> int:
-        stats = organize_functions(only_root=False)
-        print(f"[iOSHelper] organized functions: {stats.moved} moved, {stats.skipped} skipped, {stats.failed} failed")
+        organize_functions(only_root=False)
         return 1
 
     def update(self, ctx) -> int:

@@ -79,6 +79,9 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         "ioshelper.plugins.objc.oslog.error_case_optimizer",
         "idahelper.dsc.stubs",
         "ioshelper.plugins.dsc.stub_calls.optimizer",
+        # Reloaded after `idahelper.dsc.stubs` so the organizer re-imports the fresh
+        # `StubSegmentKind`/`stub_segment_kind` symbols it depends on.
+        "ioshelper.plugins.dsc.organize_functions.organize_functions",
     ):
         if modname in sys.modules:
             try:

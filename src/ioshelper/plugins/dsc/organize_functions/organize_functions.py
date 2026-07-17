@@ -1,29 +1,42 @@
+"""Organize the Functions window of a DSC database: loaded modules' code by module, dyld stubs out of the way."""
+
 __all__ = ["OrganizeStats", "organize_functions"]
 
+from collections import Counter
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import ida_dirtree
 from ida_dirtree import dirtree_t
 from idahelper import memory
+from idahelper.dsc.stubs import StubSegmentKind, is_cache_segment, stub_segment_kind
 from idahelper.segments import Segment
 
-# Maps a stub-segment name suffix (the part after "module:") to a folder name.
-STUB_FOLDER_BY_SUFFIX: dict[str, str] = {
-    "__stubs": "Stubs",
-    "__auth_stubs": "Auth Stubs",
-    "__objc_stubs": "Objective-C Stubs",
-    "__stub_helper": "Stub Helpers",
+if TYPE_CHECKING:
+    from idahelper.dscu import Dsc
+
+# Top-level folder for every flavor of dyld stub trampoline — they are noise in the
+# Functions window, so they all get tucked into one place, subdivided by kind.
+DYLD_STUBS_FOLDER = "Dyld Stubs"
+# Subfolder of `Dyld Stubs` per stub segment flavor.
+STUB_FOLDER_BY_KIND: dict[StubSegmentKind, str] = {
+    StubSegmentKind.STUBS: "Stubs",
+    StubSegmentKind.AUTH_STUBS: "Auth Stubs",
+    StubSegmentKind.OBJC_STUBS: "Objective-C Stubs",
+    StubSegmentKind.STUB_HELPER: "Stub Helpers",
+    StubSegmentKind.DELAY_STUBS: "Delay Stubs",
+    StubSegmentKind.DELAY_HELPER: "Delay Helpers",
+    StubSegmentKind.LAZY_HELPERS: "Lazy Helpers",
+    StubSegmentKind.CACHE_STUB_ISLAND: "Stub Islands",
+    # The dyld-synthesized `_objc_msgSend$sel` extras are the same trampolines as a
+    # module's `__objc_stubs`, so they share a folder.
+    StubSegmentKind.CACHE_OBJC_MSGSEND: "Objective-C Stubs",
 }
-# Parent folder for a module's stub segments.
-STUBS_FOLDER = "Stubs"
-# Suffix of the segments holding a module's real code.
-TEXT_SEGMENT_SUFFIX = "__text"
-# Folder for functions in executable segments with an unrecognized suffix.
-FALLBACK_FOLDER = "Other"
-# Segments named like `dyld_shared_cache_arm64e.02:__stubs` belong to the cache itself
-# (stub islands and other per-subcache sections), not to a module.
-DSC_SEGMENT_PREFIX = "dyld_shared_cache"
-DSC_FOLDER = "Cache"
+# Catch-all for functions that belong to no loaded module and are not stubs: GOT pointer
+# slots IDA turned into functions, cache `__TEXT` mapping slices, and code of modules that
+# are not loaded. They land here rather than at the tree root or in a module-named folder
+# (which would wrongly imply the module is loaded).
+OTHER_FOLDER = "Other"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,13 +64,16 @@ class OrganizeStats:
 
 def organize_functions(*, only_root: bool = True) -> OrganizeStats:
     """
-    Organize the Functions window folders of a DSC database by module and segment kind.
+    Organize the Functions window folders of a DSC database.
 
-    Functions in stub segments (`__stubs`, `__auth_stubs`, ...) are moved into
-    subfolders of "Stubs", and each module's `__text` functions into a folder
-    named after the module. Segments of the cache itself
-    (`dyld_shared_cache_arm64e.02:__stubs`, ...) go into "Cache/<subcache>/<kind>".
-    Functions in other executable segments go into "Other/<segment suffix>".
+    Every dyld stub trampoline — a module's `__stubs`/`__auth_stubs`/`__objc_stubs`/... and
+    the cache's own stub islands and objc_msgSend extras regions — goes into a subfolder of
+    "Dyld Stubs"; those segments are recognized by kind, not by permissions, since the DSC
+    loader leaves some of them non-executable. Each *loaded* module's remaining functions go
+    into a folder named after the module. Everything else with functions — GOT pointer slots,
+    cache mapping slices, and code of modules that are not loaded — goes into "Other", so a
+    full pass leaves no functions at the tree root and never names a folder after an unloaded
+    module.
 
     Args:
         only_root: When `True`, only organize functions currently at the tree root
@@ -65,54 +81,86 @@ def organize_functions(*, only_root: bool = True) -> OrganizeStats:
             `False`, move every function to its computed folder wherever it is now.
 
     Returns:
-        Aggregated move statistics across all executable segments.
+        Aggregated move statistics across all organized segments.
     """
     func_dir: dirtree_t = ida_dirtree.get_std_dirtree(ida_dirtree.DIRTREE_FUNCS)
     func_dir.chdir("/")
+    dsc = _get_dsc()
+    print(f"[iOSHelper] organizing functions into folders ({'new functions only' if only_root else 'full pass'})")
+    if dsc is None:
+        print("[iOSHelper] dscu service unavailable (IDA < 9.4): treating every module section as loaded")
 
     stats = OrganizeStats()
     created_folders: set[str] = set()
-    # Permission-based rather than class-based: the DSC loader does not mark the
-    # cache's own segments (stub islands, ...) with the CODE class.
-    for segment in (s for s in Segment.get_all() if s.is_executable):
-        folder = _folder_for_segment(segment)
-        if folder is None:
+    moved_per_folder: Counter[str] = Counter()
+    failure_examples: list[str] = []
+    for segment in Segment.get_all():
+        if next(segment.functions(), None) is None:
             continue
+        folder = _folder_for_segment(segment, dsc)
         if folder not in created_folders:
             _make_folder(func_dir, folder)
             created_folders.add(folder)
-        stats += _move_segment_functions(func_dir, segment, folder, only_root=only_root)
+        segment_stats = _move_segment_functions(
+            func_dir, segment, folder, only_root=only_root, failures=failure_examples
+        )
+        moved_per_folder[folder.split("/", 1)[0]] += segment_stats.moved
+        stats += segment_stats
 
+    _print_summary(stats, moved_per_folder, failure_examples)
     if not only_root:
         removed = _remove_empty_folders(func_dir)
         if removed:
-            print(f"[iOSHelper] removed {removed} empty function folders")
+            print(f"[iOSHelper] removed {removed} empty function folder(s)")
+        _warn_if_root_not_empty(func_dir)
     return stats
 
 
-def _folder_for_segment(segment: Segment) -> str | None:
+def _get_dsc() -> "Dsc | None":
+    """Return the dscu facade for the current database, or `None` on IDA < 9.4."""
+    try:
+        from idahelper.dscu import Dsc
+    except ImportError:
+        return None
+    return Dsc.get()
+
+
+def _folder_for_segment(segment: Segment, dsc: "Dsc | None") -> str:
     """
-    Return the destination folder for a segment's functions, or `None` to keep them in root.
+    Return the destination folder for a segment's functions.
+
+    Every function-bearing segment maps to some folder, so a full pass leaves the tree root
+    empty: stubs to "Dyld Stubs", a loaded module's sections to its module folder, and
+    anything else to "Other".
 
     Args:
-        segment: An executable segment, named like `module:__suffix` in a DSC database.
+        segment: A segment holding at least one function.
+        dsc: The dscu facade, used to tell a loaded module's sections from unloaded code;
+            `None` (IDA < 9.4) treats every module section as loaded.
     """
-    suffix = segment.suffix
-    module = segment.base_name
+    if (kind := stub_segment_kind(segment)) is not None:
+        return f"{DYLD_STUBS_FOLDER}/{STUB_FOLDER_BY_KIND[kind]}"
+    if _is_loaded_module_section(segment, dsc):
+        return segment.base_name
+    return OTHER_FOLDER
 
-    if module.startswith(DSC_SEGMENT_PREFIX):
-        # `dyld_shared_cache_arm64e.02:__stubs` -> `Cache/02/Stubs`
-        subcache = module.rsplit(".", 1)[-1] if "." in module else module
-        kind = STUB_FOLDER_BY_SUFFIX.get(suffix, suffix)
-        return f"{DSC_FOLDER}/{subcache}/{kind}"
 
-    if suffix == TEXT_SEGMENT_SUFFIX:
-        # A bare `__text` segment has no module prefix; keep its functions in root.
-        return module if module != segment.name else None
+def _is_loaded_module_section(segment: Segment, dsc: "Dsc | None") -> bool:
+    """
+    Whether the segment is a section (`module:__section`) of a module loaded into the database.
 
-    if (stub_kind := STUB_FOLDER_BY_SUFFIX.get(suffix)) is not None:
-        return f"{STUBS_FOLDER}/{stub_kind}"
-    return f"{FALLBACK_FOLDER}/{suffix}"
+    Args:
+        segment: A segment holding at least one function.
+        dsc: The dscu facade for the current database, or `None` on IDA < 9.4.
+    """
+    if is_cache_segment(segment) or segment.base_name == segment.name:
+        # A cache-owned segment or a bare (colon-less) section is not a module section.
+        return False
+    if dsc is None:
+        # IDA < 9.4 cannot report load state; assume module sections belong to loaded modules.
+        return True
+    region = dsc.region_at(segment.start_ea)
+    return region is not None and region.image_index >= 0 and dsc.is_image_loaded(region.image_index)
 
 
 def _make_folder(func_dir: dirtree_t, path: str) -> None:
@@ -131,7 +179,9 @@ def _make_folder(func_dir: dirtree_t, path: str) -> None:
             print(f"[iOSHelper] failed to create functions folder {current!r}: {dirtree_t.errstr(err)}")
 
 
-def _move_segment_functions(func_dir: dirtree_t, segment: Segment, folder: str, *, only_root: bool) -> OrganizeStats:
+def _move_segment_functions(
+    func_dir: dirtree_t, segment: Segment, folder: str, *, only_root: bool, failures: list[str]
+) -> OrganizeStats:
     """
     Move every function of `segment` into `folder`.
 
@@ -144,6 +194,8 @@ def _move_segment_functions(func_dir: dirtree_t, segment: Segment, folder: str, 
         only_root: When `True`, source paths are the tree root: a function not
             found there is assumed to be already organized and counted as skipped.
             When `False`, each function is moved from wherever it currently is.
+        failures: Names of functions that could not be moved are appended here,
+            up to a few examples, for the run summary.
 
     Returns:
         Move statistics for this segment.
@@ -154,6 +206,7 @@ def _move_segment_functions(func_dir: dirtree_t, segment: Segment, folder: str, 
         if not name or "/" in name:
             # A "/" inside the name would be parsed as a path separator.
             failed += 1
+            _record_failure(failures, name or f"<unnamed {func.start_ea:#x}>")
             continue
 
         target = f"{folder}/{name}"
@@ -163,6 +216,7 @@ def _move_segment_functions(func_dir: dirtree_t, segment: Segment, folder: str, 
             source = _current_path(func_dir, func.start_ea)
             if source is None:
                 failed += 1
+                _record_failure(failures, name)
                 continue
             if source == target:
                 skipped += 1
@@ -175,7 +229,67 @@ def _move_segment_functions(func_dir: dirtree_t, segment: Segment, folder: str, 
             skipped += 1
         else:
             failed += 1
+            _record_failure(failures, name)
     return OrganizeStats(moved=moved, skipped=skipped, failed=failed)
+
+
+def _record_failure(failures: list[str], name: str, limit: int = 3) -> None:
+    """Keep up to `limit` example names of functions that could not be moved."""
+    if len(failures) < limit:
+        failures.append(name)
+
+
+def _print_summary(stats: OrganizeStats, moved_per_folder: Counter[str], failure_examples: list[str]) -> None:
+    """
+    Print the outcome of an organize run to the console.
+
+    Args:
+        stats: Aggregated move statistics.
+        moved_per_folder: Moved-function count per top-level destination folder.
+        failure_examples: Example names of functions that could not be moved.
+    """
+    special = {DYLD_STUBS_FOLDER, OTHER_FOLDER}
+    module_moved = sum(count for folder, count in moved_per_folder.items() if folder not in special)
+    module_count = sum(1 for folder in moved_per_folder if folder not in special)
+    breakdown = (
+        f" ({moved_per_folder[DYLD_STUBS_FOLDER]} to {DYLD_STUBS_FOLDER!r},"
+        f" {module_moved} to {module_count} module folder(s),"
+        f" {moved_per_folder[OTHER_FOLDER]} to {OTHER_FOLDER!r})"
+        if stats.moved
+        else ""
+    )
+    print(
+        f"[iOSHelper] organized functions: {stats.moved} moved{breakdown}, {stats.skipped} skipped, {stats.failed} failed"
+    )
+    if failure_examples:
+        print(f"[iOSHelper] could not move e.g.: {', '.join(failure_examples)}")
+
+
+def _warn_if_root_not_empty(func_dir: dirtree_t) -> None:
+    """
+    Warn if any function is still at the tree root after a full pass.
+
+    A full pass files every function-bearing segment, so a non-empty root points at a
+    function the segment scan did not reach (e.g. a name clash that failed to move).
+
+    Args:
+        func_dir: The functions dirtree, positioned at the root.
+    """
+    remaining = _count_root_functions(func_dir)
+    if remaining:
+        print(f"[iOSHelper] warning: {remaining} function(s) still at the Functions window root")
+
+
+def _count_root_functions(func_dir: dirtree_t) -> int:
+    """Count the function entries (not folders) directly under the tree root."""
+    count = 0
+    it = ida_dirtree.dirtree_iterator_t()
+    ok = func_dir.findfirst(it, "*")
+    while ok:
+        if not func_dir.resolve_cursor(it.cursor).isdir:
+            count += 1
+        ok = func_dir.findnext(it)
+    return count
 
 
 class _FolderCollector(ida_dirtree.dirtree_visitor_t):
