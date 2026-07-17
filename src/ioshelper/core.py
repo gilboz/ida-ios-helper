@@ -28,7 +28,6 @@ from .plugins.kernelcache.kalloc_type import apply_kalloc_type_component, create
 from .plugins.kernelcache.obj_this import this_arg_fixer_component
 from .plugins.objc.objc_arg_renamer import (
     auto_objc_arg_renamer_component,
-    mass_objc_arg_renamer_component,
     objc_arg_renamer_component,
 )
 from .plugins.objc.objc_msgsend_args import (
@@ -129,7 +128,6 @@ def objc_plugins() -> list[ComponentFactory]:
         objc_xrefs_component,
         objc_optimizers_component,
         objc_arg_renamer_component,
-        mass_objc_arg_renamer_component,
         auto_objc_arg_renamer_component,
         objc_sugar_component,
     ]

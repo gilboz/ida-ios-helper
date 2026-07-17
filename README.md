@@ -374,7 +374,6 @@ Obj-C binaries, including dyld_shared_cache (`disabled_features = ["objc"]` skip
 | `objc-xrefs` | Show Obj-C xrefs of methods and selectors | ✔ |
 | `objc-optimizers` | Obj-C decompiler optimizers | |
 | `objc-arg-renamer` | Rename Obj-C method arguments in the current function | ✔ |
-| `objc-arg-renamer-all` | Rename Obj-C method arguments in all functions | ✔ |
 | `objc-arg-renamer-auto` | Rename Obj-C method arguments automatically on decompilation | |
 | `objc-sugar` | Rewrite objc_msgSend calls and selectors as Obj-C syntax | |
 | `objc-msgsend-argcount` | Derive objc_msgSend argument count from the selector (experimental, opt-in) | |

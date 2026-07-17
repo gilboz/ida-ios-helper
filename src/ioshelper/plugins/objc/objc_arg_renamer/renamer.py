@@ -14,12 +14,10 @@ All derived names are converted to snake_case.
 
 The current names are read from the decompiled function's argument lvars: only arguments
 that still carry their default `aN` name are touched, so manual renames and names from a
-user-applied prototype are preserved. `rename_all_objc_method_args` drives this across the
-whole database.
+user-applied prototype are preserved.
 """
 
 __all__ = [
-    "rename_all_objc_method_args",
     "rename_objc_method_args",
     "rename_objc_method_args_during_decompilation",
 ]
@@ -28,7 +26,7 @@ import re
 
 from ida_funcs import func_t
 from ida_hexrays import DecompilationFailure, cfunc_t, lvar_t
-from idahelper import functions, memory, naming, objc
+from idahelper import memory, naming, objc
 from idahelper.ast import cfunc, lvars
 from idahelper.ast.lvars import VariableModification
 
@@ -66,15 +64,6 @@ _VERB_PREFIX = re.compile(rf"(?i:{'|'.join(_VERBS)})([A-Z][A-Za-z0-9]*)$")
 _VERB_OBJECT_BEFORE_DESTINATION = re.compile(
     rf"(?i:{'|'.join(_TRANSFER_VERBS)})([A-Z][A-Za-z0-9]*?)(?:{'|'.join(_DESTINATION_WORDS)})[A-Z]"
 )
-
-
-def rename_all_objc_method_args() -> None:
-    """Rename the default-named arguments of every Obj-C method in the database."""
-    count = 0
-    for func in functions.iterate_functions():
-        if rename_objc_method_args(func):
-            count += 1
-    print(f"[Info] Renamed arguments for {count} Obj-C methods")
 
 
 def rename_objc_method_args(func: func_t) -> bool:
