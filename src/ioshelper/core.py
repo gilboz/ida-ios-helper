@@ -26,14 +26,7 @@ from .plugins.kernelcache.func_renamers import (
 from .plugins.kernelcache.generic_calls_fix import generic_calls_fix_component
 from .plugins.kernelcache.kalloc_type import apply_kalloc_type_component, create_type_from_kalloc_component
 from .plugins.kernelcache.obj_this import this_arg_fixer_component
-from .plugins.objc.objc_arg_renamer import (
-    auto_objc_arg_renamer_component,
-    objc_arg_renamer_component,
-)
-from .plugins.objc.objc_getter_setter import (
-    OBJC_GETTER_SETTER_COMPONENT_NAME,
-    objc_getter_setter_renamer_component,
-)
+from .plugins.objc.objc_lvar_renamer import objc_lvar_renamer_component
 from .plugins.objc.objc_msgsend_args import (
     OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME,
     objc_msgsend_argcount_component,
@@ -131,16 +124,12 @@ def objc_plugins() -> list[ComponentFactory]:
         oslog_component,
         objc_xrefs_component,
         objc_optimizers_component,
-        objc_arg_renamer_component,
-        auto_objc_arg_renamer_component,
+        objc_lvar_renamer_component,
         objc_sugar_component,
     ]
     # WIP: selector-driven objc_msgSend arg-count fixup is unreliable, so it is opt-in.
     if config.is_experimental_enabled(OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME):
         plugins.append(objc_msgsend_argcount_component)
-    # WIP: naming locals from getter/setter selectors is new and not well tested, so it is opt-in.
-    if config.is_experimental_enabled(OBJC_GETTER_SETTER_COMPONENT_NAME):
-        plugins.append(objc_getter_setter_renamer_component)
     return plugins
 
 

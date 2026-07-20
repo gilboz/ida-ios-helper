@@ -373,11 +373,18 @@ Obj-C binaries, including dyld_shared_cache (`disabled_features = ["objc"]` skip
 | `oslog-optimizer` | Optimize os_log calls in the decompiler | |
 | `objc-xrefs` | Show Obj-C xrefs of methods and selectors | ✔ |
 | `objc-optimizers` | Obj-C decompiler optimizers | |
-| `objc-arg-renamer` | Rename Obj-C method arguments in the current function | ✔ |
-| `objc-arg-renamer-auto` | Rename Obj-C method arguments automatically on decompilation | |
-| `objc-getter-setter-renamer` | Name local variables from the Obj-C getter/setter they come from (experimental, opt-in) | |
+| `objc-lvar-renamer` | Name default-named local variables from Obj-C selectors on decompilation, via the name sources below | |
+| `objc-rename-args` | Name source: the function's own selector names its arguments (`initWithFrame:` -> `frame`) | |
+| `objc-rename-getters` | Name source: a variable assigned from a getter is named after it (`v5 = [obj title]` -> `title`; experimental, opt-in) | |
+| `objc-rename-callee-args` | Name source: a variable passed at a selector keyword position is named from the keyword (`[obj setTitle:v5]` -> `title`; experimental, opt-in) | |
 | `objc-sugar` | Rewrite objc_msgSend calls and selectors as Obj-C syntax | |
 | `objc-msgsend-argcount` | Derive objc_msgSend argument count from the selector (experimental, opt-in) | |
+
+The `objc-rename-*` entries are the `objc-lvar-renamer`'s individual name sources rather
+than standalone components; they are disabled and opted into by the same
+`disabled_components` / `experimental_components` lists. When several sources want to name
+the same variable, the higher one in the table wins; variables that already carry a
+non-default name are never touched.
 
 Swift binaries, including dyld_shared_cache (`disabled_features = ["swift"]` skips them all):
 

@@ -18,5 +18,5 @@ disabled_features = []
 disabled_components = []
 
 # Work-in-progress components to opt into, by name. These are disabled by default.
-# e.g. experimental_components = ["objc-msgsend-argcount"]
+# e.g. experimental_components = ["objc-msgsend-argcount", "objc-rename-getters", "objc-rename-callee-args"]
 experimental_components = []

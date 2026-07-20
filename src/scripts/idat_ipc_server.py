@@ -72,6 +72,9 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         "idahelper.objc",
         "idahelper.ast.citem",
         "idahelper.ast.cexpr",
+        # Re-runs `Config.load()`, refreshing the `config` singleton the lvar renamer's
+        # per-source gating reads — reloaded before its consumers so they rebind it fresh.
+        "ioshelper.base.config",
         "ioshelper.plugins.swift.swift_types.swift_types",
         "ioshelper.plugins.swift.swift_types.prolog_rewrite",
         "ioshelper.plugins.swift.swift_oslog.log_hook",
@@ -81,12 +84,13 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         "ioshelper.plugins.objc.objc_sugar.objc_opt",
         "ioshelper.plugins.objc.objc_sugar.objc_msgsend",
         "ioshelper.plugins.objc.objc_msgsend_args.optimizer",
-        "ioshelper.plugins.objc.objc_arg_renamer.renamer",
-        # Reloaded after `renamer` so the hook re-imports the fresh rename function.
-        "ioshelper.plugins.objc.objc_arg_renamer.hook",
-        "ioshelper.plugins.objc.objc_getter_setter.renamer",
-        # Reloaded after `renamer` so the hook re-imports the fresh rename function.
-        "ioshelper.plugins.objc.objc_getter_setter.hook",
+        # The lvar renamer's modules, in dependency order so each re-imports fresh symbols
+        # from the ones before it.
+        "ioshelper.plugins.objc.objc_lvar_renamer.heuristics",
+        "ioshelper.plugins.objc.objc_lvar_renamer.args_source",
+        "ioshelper.plugins.objc.objc_lvar_renamer.call_sources",
+        "ioshelper.plugins.objc.objc_lvar_renamer.pipeline",
+        "ioshelper.plugins.objc.objc_lvar_renamer.hook",
         "ioshelper.plugins.objc.oslog.os_log",
         "ioshelper.debug.dump_ctree",
         # Reloaded after `dump_ctree` so `dump_ps` re-imports the fresh `dump_ast`.
@@ -111,9 +115,8 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
     from ioshelper.base.config import Config, Feature
     from ioshelper.plugins.dsc.stub_calls import STUB_CALLS_COMPONENT_NAME
     from ioshelper.plugins.dsc.stub_calls.optimizer import stub_call_optimizer_t
-    from ioshelper.plugins.objc.objc_arg_renamer.hook import ObjcArgRenameHook
-    from ioshelper.plugins.objc.objc_getter_setter import OBJC_GETTER_SETTER_COMPONENT_NAME
-    from ioshelper.plugins.objc.objc_getter_setter.hook import ObjcGetterSetterRenameHook
+    from ioshelper.plugins.objc.objc_lvar_renamer import OBJC_LVAR_RENAMER_COMPONENT_NAME
+    from ioshelper.plugins.objc.objc_lvar_renamer.hook import ObjcLvarRenameHook
     from ioshelper.plugins.objc.objc_msgsend_args import OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME
     from ioshelper.plugins.objc.objc_msgsend_args.optimizer import objc_msgsend_argcount_optimizer_t
     from ioshelper.plugins.objc.objc_sugar.objc_msgsend import objc_msgsend_hexrays_hooks_t
@@ -146,15 +149,15 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
     # definitions in each feature's `__init__.py` so the config gates headless installs by
     # the same names as the GUI. Hook order matters — hooks fire in reverse install order:
     # objc-sugar's msgSend hook is listed before its selector hook so it fires after it
-    # (match core.objc_plugins order). The maturity hooks (objc-arg-renamer-auto,
-    # objc-getter-setter-renamer) use a different event and are order-independent.
+    # (match core.objc_plugins order). The objc-lvar-renamer maturity hook uses a different
+    # event and is order-independent; its individual name sources (objc-rename-*) are
+    # gated inside its pipeline by the same config lists.
     hook_specs: list[tuple[str, Feature | None, bool, list]] = [
         ("swift-class-call", Feature.SWIFT, False, [SwiftClassCallHook]),
         ("swift-prolog-rewrite", Feature.SWIFT, False, [SwiftPrologRewriteHook]),
         ("swift-oslog", Feature.SWIFT, False, [SwiftLogRewriteHook]),
         ("objc-sugar", Feature.OBJC, False, [objc_msgsend_hexrays_hooks_t, objc_selector_hexrays_hooks_t]),
-        ("objc-arg-renamer-auto", Feature.OBJC, False, [ObjcArgRenameHook]),
-        (OBJC_GETTER_SETTER_COMPONENT_NAME, Feature.OBJC, True, [ObjcGetterSetterRenameHook]),
+        (OBJC_LVAR_RENAMER_COMPONENT_NAME, Feature.OBJC, False, [ObjcLvarRenameHook]),
     ]
     for name, feature, experimental, hook_classes in hook_specs:
         reason = skip_reason(name, feature, experimental=experimental)
