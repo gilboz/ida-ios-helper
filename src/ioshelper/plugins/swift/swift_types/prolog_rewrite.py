@@ -27,6 +27,8 @@ import ida_netnode
 import ida_typeinf
 import idaapi
 import idc
+from idahelper import naming
+from idahelper.ast import cexpr
 
 _TYPE_METADATA_ACCESSOR_PREFIX = "type metadata accessor for "
 
@@ -77,12 +79,6 @@ def _short_type(tname: str) -> str:
     return tname.rsplit(".", 1)[-1] if "." in tname else tname
 
 
-def _strip_casts(expr):
-    while expr.op == ida_hexrays.cot_cast:
-        expr = expr.x
-    return expr
-
-
 class _PrologPatternScanner(ida_hexrays.ctree_visitor_t):
     """
     Collect:
@@ -103,13 +99,13 @@ class _PrologPatternScanner(ida_hexrays.ctree_visitor_t):
             return 0
         lvar_idx = target.v.idx
 
-        value = _strip_casts(e.y)
+        value = cexpr.strip_casts(e.y)
 
         # IDA 9.4+ wraps metadata-accessor calls in a `.value` member access:
         # `lvar = type_metadata_accessor_for_X(...).value`. Unwrap before the
         # call check so we still recognize the pattern.
         if value.op in (ida_hexrays.cot_memref, ida_hexrays.cot_memptr):
-            value = _strip_casts(value.x)
+            value = cexpr.strip_casts(value.x)
 
         # md  = type_metadata_accessor_for_X(...)
         if value.op == ida_hexrays.cot_call and value.x.op == ida_hexrays.cot_obj:
@@ -120,9 +116,9 @@ class _PrologPatternScanner(ida_hexrays.ctree_visitor_t):
 
         # vwt = *(md - N)
         if value.op == ida_hexrays.cot_ptr:
-            inner = _strip_casts(value.x)
+            inner = cexpr.strip_casts(value.x)
             if inner.op == ida_hexrays.cot_sub:
-                lhs = _strip_casts(inner.x)
+                lhs = cexpr.strip_casts(inner.x)
                 if lhs.op == ida_hexrays.cot_var and lhs.v.idx in self.md_lvars:
                     self.vwt_lvars[lvar_idx] = self.md_lvars[lhs.v.idx]
 
@@ -152,15 +148,9 @@ def _apply_prolog_rewrites(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
     used_names: set[str] = {lv.name for lv in lvars}
 
     def _unique(base: str) -> str:
-        if base not in used_names:
-            used_names.add(base)
-            return base
-        i = 2
-        while f"{base}_{i}" in used_names:
-            i += 1
-        new_name = f"{base}_{i}"
-        used_names.add(new_name)
-        return new_name
+        name = naming.unique_name(base, used_names)
+        used_names.add(name)
+        return name
 
     def _rename(lv, base: str) -> None:
         if lv.has_user_name:
@@ -204,10 +194,10 @@ def _chkstk_vwt_size_type(call_expr, vwt_idx_to_type: dict[int, str]) -> str | N
         return None
     if call_expr.a.size() < 1:
         return None
-    arg = _strip_casts(call_expr.a[0])
+    arg = cexpr.strip_casts(call_expr.a[0])
     # `vwt->size` lifts to cot_memptr (or cot_memref) on the vwt lvar.
     if arg.op in (ida_hexrays.cot_memptr, ida_hexrays.cot_memref):
-        base = _strip_casts(arg.x)
+        base = cexpr.strip_casts(arg.x)
         if base.op == ida_hexrays.cot_var and base.v.idx in vwt_idx_to_type:
             return vwt_idx_to_type[base.v.idx]
     return None
@@ -215,21 +205,21 @@ def _chkstk_vwt_size_type(call_expr, vwt_idx_to_type: dict[int, str]) -> str | N
 
 def _is_aligned_alloca(expr) -> bool:
     """Match `(cast)<sp> - ((size + 15) & 0xFFFFFFFFFFFFFFF0LL)`."""
-    expr = _strip_casts(expr)
+    expr = cexpr.strip_casts(expr)
     if expr.op != ida_hexrays.cot_sub:
         return False
-    rhs = _strip_casts(expr.y)
+    rhs = cexpr.strip_casts(expr.y)
     if rhs.op != ida_hexrays.cot_band:
         return False
-    mask = _strip_casts(rhs.y)
+    mask = cexpr.strip_casts(rhs.y)
     if mask.op != ida_hexrays.cot_num:
         return False
     if (mask.numval() & 0xFFFFFFFFFFFFFFFF) != 0xFFFFFFFFFFFFFFF0:
         return False
-    add = _strip_casts(rhs.x)
+    add = cexpr.strip_casts(rhs.x)
     if add.op != ida_hexrays.cot_add:
         return False
-    fifteen = _strip_casts(add.y)
+    fifteen = cexpr.strip_casts(add.y)
     return not (fifteen.op != ida_hexrays.cot_num or fifteen.numval() != 15)
 
 
@@ -295,7 +285,7 @@ def _erase_unused_stack_allocations(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa:
                 return 0  # has real readers downstream
             # RHS must be `(cast)<something> - <something>` — the stack-offset
             # shape we want to scrub. Don't touch a `v8 = f()` or similar.
-            rhs = _strip_casts(e.y)
+            rhs = cexpr.strip_casts(e.y)
             if rhs.op != ida_hexrays.cot_sub:
                 return 0
             try:
@@ -326,15 +316,9 @@ def _rename_swift_error_lvars(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
     used_names: set[str] = {lvars[i].name for i in range(lvars.size())}
 
     def _unique(base: str) -> str:
-        if base not in used_names:
-            used_names.add(base)
-            return base
-        i = 2
-        while f"{base}_{i}" in used_names:
-            i += 1
-        new_name = f"{base}_{i}"
-        used_names.add(new_name)
-        return new_name
+        name = naming.unique_name(base, used_names)
+        used_names.add(name)
+        return name
 
     renamed_idxs: set[int] = set()
 
@@ -361,7 +345,7 @@ def _rename_swift_error_lvars(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
                     cond_inner = cond
                     if cond_inner.op in (ida_hexrays.cot_lnot, ida_hexrays.cot_bnot):
                         cond_inner = cond_inner.x
-                    cond_inner = _strip_casts(cond_inner)
+                    cond_inner = cexpr.strip_casts(cond_inner)
                     if cond_inner.op != ida_hexrays.cot_var:
                         break
                     idx = cond_inner.v.idx
@@ -393,7 +377,7 @@ def _is_swift_throws_call_stmt(stmt) -> bool:
     # but may be wrapped in cot_asg for `result = fn(...)`.
     call = e
     if call.op == ida_hexrays.cot_asg:
-        call = _strip_casts(call.y)
+        call = cexpr.strip_casts(call.y)
     if call.op != ida_hexrays.cot_call:
         return False
     callee = call.x
@@ -496,15 +480,9 @@ def _apply_buf_rewrites(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
     used_names: set[str] = {lvars[i].name for i in range(lvars.size())}
 
     def _unique(base: str) -> str:
-        if base not in used_names:
-            used_names.add(base)
-            return base
-        i = 2
-        while f"{base}_{i}" in used_names:
-            i += 1
-        new_name = f"{base}_{i}"
-        used_names.add(new_name)
-        return new_name
+        name = naming.unique_name(base, used_names)
+        used_names.add(name)
+        return name
 
     changes = 0
     pending_type: str | None = None

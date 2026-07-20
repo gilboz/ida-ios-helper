@@ -17,16 +17,16 @@ from dataclasses import replace
 from ida_hexrays import Hexrays_Hooks, cfunc_t, vdui_t
 from ida_kernwin import simpleline_t
 from ida_pro import strvec_t
+
+# IDA renders every message send the same way regardless of dispatch (bare
+# `objc_msgSend`, a `j_`-thunk, or a selector stub `_objc_msgSend$foo`) — always
+# as `objc_msgSend(receiver, "selector", ...)`. `MSGSEND_NAMES` holds the callee
+# spellings we rewrite; `objc_msgSendSuper2` etc. are deliberately excluded.
+from idahelper.objc import MSGSEND_NAMES
 from idahelper.pseudocode import Anchor, AnchorKind, Color, Line, Token
 
 from .selectors import handle_selector_double_click, handle_selector_xref, make_selector_token, register_selectors
 from .tokens import MAX_REWRITES, drop_trailing_comma, find_callee, open_paren_after, split_args
-
-# IDA renders every message send the same way regardless of dispatch (bare
-# `objc_msgSend`, a `j_`-thunk, or a selector stub `_objc_msgSend$foo`) — always
-# as `objc_msgSend(receiver, "selector", ...)`. These are the callee spellings we
-# rewrite; `objc_msgSendSuper2` etc. are deliberately excluded.
-MSGSEND_NAMES = frozenset({"objc_msgSend", "_objc_msgSend", "j_objc_msgSend", "j__objc_msgSend"})
 
 # Wrapped continuation lines are merged back together as long as the result stays
 # within this many visible columns (Hex-Rays' line width is not exposed via the

@@ -26,7 +26,8 @@ import contextlib
 import ida_hexrays
 import ida_typeinf
 import idc
-from idahelper import comments, memory, tif
+from idahelper import comments, memory, naming, tif
+from idahelper.ast import cexpr
 
 from ioshelper.plugins.objc.oslog.os_log import (
     LogCallInfo,
@@ -42,12 +43,6 @@ SWIFT_SLOW_DEALLOC = "_swift_slowDealloc"
 LOGGER_ARG_INDEX = 1
 
 
-def _strip_casts(expr):
-    while expr.op == ida_hexrays.cot_cast:
-        expr = expr.x
-    return expr
-
-
 def _is_swift_slow_alloc(call_expr) -> bool:
     if call_expr.op != ida_hexrays.cot_call or call_expr.x.op != ida_hexrays.cot_obj:
         return False
@@ -56,7 +51,7 @@ def _is_swift_slow_alloc(call_expr) -> bool:
 
 
 def _lvar_idx_of(expr) -> int | None:
-    expr = _strip_casts(expr)
+    expr = cexpr.strip_casts(expr)
     if expr.op == ida_hexrays.cot_var:
         return expr.v.idx
     return None
@@ -72,7 +67,7 @@ def _decode_buf_write(target) -> tuple[int, int, int] | None:
     if write_size <= 0:
         return None
 
-    addr = _strip_casts(target.x)
+    addr = cexpr.strip_casts(target.x)
 
     # `*buf` form
     if addr.op == ida_hexrays.cot_var:
@@ -80,8 +75,8 @@ def _decode_buf_write(target) -> tuple[int, int, int] | None:
 
     # `buf + OFF` form (commutative)
     if addr.op == ida_hexrays.cot_add:
-        lhs = _strip_casts(addr.x)
-        rhs = _strip_casts(addr.y)
+        lhs = cexpr.strip_casts(addr.x)
+        rhs = cexpr.strip_casts(addr.y)
         for var_side, const_side in ((lhs, rhs), (rhs, lhs)):
             if var_side.op == ida_hexrays.cot_var and const_side.op == ida_hexrays.cot_num:
                 return var_side.v.idx, const_side.numval(), write_size
@@ -153,7 +148,7 @@ class _Detector(ida_hexrays.ctree_visitor_t):
             callee_name = idc.get_name(e.x.obj_ea) or ""
             if SWIFT_SLOW_DEALLOC in callee_name and self._cur_insn is not None:  # noqa: SIM102
                 if e.a is not None and e.a.size() >= 1:
-                    buf = _strip_casts(e.a[0])
+                    buf = cexpr.strip_casts(e.a[0])
                     if buf.op == ida_hexrays.cot_var:
                         self.dealloc_insns[buf.v.idx] = self._cur_insn
 
@@ -166,7 +161,7 @@ class _Detector(ida_hexrays.ctree_visitor_t):
         if target.op == ida_hexrays.cot_var:
             idx = target.v.idx
             self.lvar_asgs.setdefault(idx, []).append(e)
-            rhs = _strip_casts(e.y)
+            rhs = cexpr.strip_casts(e.y)
             # `lvar = static os_log_type_t.<X>.getter(...)`?
             if rhs.op == ida_hexrays.cot_call and rhs.x.op == ida_hexrays.cot_obj:
                 callee = idc.get_name(rhs.x.obj_ea) or ""
@@ -196,19 +191,19 @@ class _Detector(ida_hexrays.ctree_visitor_t):
 def _find_alloc_size(buf_lvar_idx: int, lvar_asgs: dict) -> int | None:
     """If buf was initialized by `swift_slowAlloc(N, -1)`, return N."""
     for asg in lvar_asgs.get(buf_lvar_idx, []):
-        val = _strip_casts(asg.y)
+        val = cexpr.strip_casts(asg.y)
         if not _is_swift_slow_alloc(val):
             continue
         if val.a is None or val.a.size() < 1:
             continue
-        size_arg = _strip_casts(val.a[0])
+        size_arg = cexpr.strip_casts(val.a[0])
         if size_arg.op == ida_hexrays.cot_num:
             return size_arg.numval()
     return None
 
 
 def _resolve_log_type(type_arg, log_type_lvars: dict) -> int | None:
-    expr = _strip_casts(type_arg)
+    expr = cexpr.strip_casts(type_arg)
     if expr.op == ida_hexrays.cot_num:
         return expr.numval()
     if expr.op == ida_hexrays.cot_var:
@@ -320,7 +315,7 @@ def _process_call(cfunc, call_expr, info: LogCallInfo, detector: _Detector, call
     if args.size() <= max_needed:
         return
 
-    size_expr = _strip_casts(args[info.size_index])
+    size_expr = cexpr.strip_casts(args[info.size_index])
     if size_expr.op != ida_hexrays.cot_num:
         return
     expected_size = size_expr.numval()
@@ -343,7 +338,7 @@ def _process_call(cfunc, call_expr, info: LogCallInfo, detector: _Detector, call
     log_type_name = log_type_to_str(log_type, info.is_signpost) if log_type is not None else "log"
 
     format_str = None
-    fmt_expr = _strip_casts(args[info.format_index])
+    fmt_expr = cexpr.strip_casts(args[info.format_index])
     if fmt_expr.op == ida_hexrays.cot_obj:
         format_str = memory.str_from_ea(fmt_expr.obj_ea)
 
@@ -474,7 +469,7 @@ def _is_lifecycle_shaped(cinsn, lvar_idx: int) -> bool:
         return True
     # `tmp = (cast)lvar_idx` — alias-only consumer.
     if e.op == ida_hexrays.cot_asg:
-        rhs = _strip_casts(e.y)
+        rhs = cexpr.strip_casts(e.y)
         if rhs.op == ida_hexrays.cot_var and rhs.v.idx == lvar_idx:
             return True
     return False
@@ -614,7 +609,7 @@ def _try_nop_fluff(alloc_insn, write_insns: list, dealloc_insn) -> None:
             print(f"[swift-oslog] nop @ {ins.ea:#x}: {exc!r}")
 
 
-def _rename_lvars(  # noqa: C901
+def _rename_lvars(
     cfunc,
     buf_idx: int,
     log_type_name: str,
@@ -632,15 +627,9 @@ def _rename_lvars(  # noqa: C901
     used_names: set[str] = {lvars[i].name for i in range(lvars.size())}
 
     def _unique(base: str) -> str:
-        if base not in used_names:
-            used_names.add(base)
-            return base
-        i = 2
-        while f"{base}_{i}" in used_names:
-            i += 1
-        new_name = f"{base}_{i}"
-        used_names.add(new_name)
-        return new_name
+        name = naming.unique_name(base, used_names)
+        used_names.add(name)
+        return name
 
     def _rename(lv, base: str) -> None:
         if lv.has_user_name:
@@ -654,11 +643,11 @@ def _rename_lvars(  # noqa: C901
     _rename(lvars[buf_idx], f"{log_type_name}_{family}_buf")
 
     for i, value_expr in enumerate(values):
-        ve = _strip_casts(value_expr)
+        ve = cexpr.strip_casts(value_expr)
         if ve.op == ida_hexrays.cot_var and ve.v.idx < lvars.size():
             _rename(lvars[ve.v.idx], f"{log_type_name}_{family}_arg{i}")
 
-    logger_var = _strip_casts(logger_arg)
+    logger_var = cexpr.strip_casts(logger_arg)
     if logger_var.op == ida_hexrays.cot_var and logger_var.v.idx < lvars.size():
         _rename(lvars[logger_var.v.idx], "logger")
 
@@ -666,7 +655,7 @@ def _rename_lvars(  # noqa: C901
     # is one we saw assigned from `static os_log_type_t.<X>.getter`. Otherwise
     # the type-arg position can hold any random temp and we'd misname it
     # (e.g. `log_type_log` slapping itself onto an alloca slot).
-    type_var = _strip_casts(type_arg)
+    type_var = cexpr.strip_casts(type_arg)
     if (
         log_type_resolved
         and type_var.op == ida_hexrays.cot_var
