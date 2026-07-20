@@ -247,6 +247,27 @@ def _count_lvar_uses(cfunc: ida_hexrays.cfunc_t) -> dict[int, int]:
     return counts
 
 
+def _nop_statement(ins: ida_hexrays.cinsn_t) -> bool:
+    """
+    Turn statement `ins` into an empty statement — unless it is a `goto` target.
+
+    A statement carrying a `label_num` is the destination of a `goto`. Nopping it and
+    letting `_purge_empty_statements` drop it would leave the goto dangling, which the
+    ctree verifier rejects with INTERR 50728 (`goto to unexisting label`) — aborting the
+    whole decompilation. Preserving the label on the resulting `cit_empty` is not enough:
+    hex-rays removes empty statements again after this hook returns, taking the label with
+    them. So a goto-target statement is left intact instead — a rare visible line of prolog
+    noise is a fair price for a valid ctree.
+
+    Returns whether the statement was nopped.
+    """
+    if ins.label_num != -1:
+        return False
+    ins.cleanup()
+    ins.op = ida_hexrays.cit_empty
+    return True
+
+
 def _erase_unused_stack_allocations(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
     """
     Nop `vN = (cast)<base> - <size>` statements whose LHS lvar is written
@@ -289,9 +310,8 @@ def _erase_unused_stack_allocations(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa:
             if rhs.op != ida_hexrays.cot_sub:
                 return 0
             try:
-                ins.cleanup()
-                ins.op = ida_hexrays.cit_empty
-                erased += 1
+                if _nop_statement(ins):
+                    erased += 1
             except Exception:  # noqa: S110
                 pass
             return 0
@@ -413,9 +433,8 @@ def _erase_chkstk_calls(cfunc: ida_hexrays.cfunc_t) -> int:
             if not _is_chkstk_callee(e.x.obj_ea):
                 return 0
             try:
-                ins.cleanup()
-                ins.op = ida_hexrays.cit_empty
-                erased += 1
+                if _nop_statement(ins):
+                    erased += 1
             except Exception:  # noqa: S110
                 pass
             return 0
@@ -427,7 +446,12 @@ def _erase_chkstk_calls(cfunc: ida_hexrays.cfunc_t) -> int:
 def _purge_empty_statements(cfunc: ida_hexrays.cfunc_t) -> None:
     """
     Walk every `cit_block` and erase its `cit_empty` children. Without this,
-    nop'd statements show up as bare `;` lines in the pseudo."""
+    nop'd statements show up as bare `;` lines in the pseudo.
+
+    A `cit_empty` that still carries a `label_num` is a `goto` target; erasing it would
+    strand the goto and trip INTERR 50728, so it is left in place. `_nop_statement` already
+    refuses to nop goto targets, so no labeled empty should reach here — this guard is just
+    defensive."""
 
     class V(ida_hexrays.ctree_visitor_t):
         def __init__(self):
@@ -440,7 +464,7 @@ def _purge_empty_statements(cfunc: ida_hexrays.cfunc_t) -> None:
             i = block.size() - 1
             while i >= 0:
                 child = block[i]
-                if child.op == ida_hexrays.cit_empty:
+                if child.op == ida_hexrays.cit_empty and child.label_num == -1:
                     try:
                         block.erase(i)
                     except Exception:

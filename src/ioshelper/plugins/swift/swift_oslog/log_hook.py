@@ -576,14 +576,36 @@ def _collapse_to_helper_call(
         new_insn.cexpr = new_call
         new_insn.ea = call_insn.ea
 
+        # Preserve a `goto` target through the replace: `new_insn` is freshly built with no
+        # label, and `replace_by` would drop `call_insn`'s, stranding any goto to it.
+        label_num = call_insn.label_num
         call_insn.replace_by(new_insn)
+        if call_insn.label_num == -1:
+            call_insn.label_num = label_num
 
-        alloc_insn.cleanup()
-        alloc_insn.op = ida_hexrays.cit_empty
+        # Leaves the alloc statement in place if it is itself a goto target (see `_nop_statement`).
+        _nop_statement(alloc_insn)
         return True  # noqa: TRY300
     except Exception as exc:
         print(f"[swift-oslog] collapse @ {alloc_insn.ea:#x}: {exc!r}")
         return False
+
+
+def _nop_statement(ins) -> bool:
+    """
+    Turn statement `ins` into an empty statement — unless it is a `goto` target.
+
+    A statement carrying a `label_num` is the destination of a `goto`. Nopping it and
+    letting `_purge_empty_statements` drop it leaves the goto dangling, which the ctree
+    verifier rejects with INTERR 50728 (`goto to unexisting label`), aborting the whole
+    decompilation. Such a statement is left intact instead — a rare visible line of log
+    plumbing is a fair price for a valid ctree. Returns whether the statement was nopped.
+    """
+    if ins.label_num != -1:
+        return False
+    ins.cleanup()
+    ins.op = ida_hexrays.cit_empty
+    return True
 
 
 def _try_nop_fluff(alloc_insn, write_insns: list, dealloc_insn) -> None:
@@ -603,8 +625,7 @@ def _try_nop_fluff(alloc_insn, write_insns: list, dealloc_insn) -> None:
         if ins is None:
             continue
         try:
-            ins.cleanup()
-            ins.op = ida_hexrays.cit_empty
+            _nop_statement(ins)
         except Exception as exc:
             print(f"[swift-oslog] nop @ {ins.ea:#x}: {exc!r}")
 
@@ -768,7 +789,11 @@ def _purge_empty_statements(cfunc) -> None:
     """
     Remove `cit_empty` children from every `cit_block` in the cfunc — the
     leftovers of nop'd alloc/write/dealloc lines. Tries common SWIG-bound
-    container methods (`erase`, `pop`); silently skips if none work."""
+    container methods (`erase`, `pop`); silently skips if none work.
+
+    A `cit_empty` that still carries a `label_num` is a `goto` target and is left in place —
+    erasing it would strand the goto and trip INTERR 50728. `_nop_statement` never produces a
+    labeled empty (it refuses to nop goto targets), so this guard is just defensive."""
 
     class V(ida_hexrays.ctree_visitor_t):
         def __init__(self):
@@ -782,7 +807,7 @@ def _purge_empty_statements(cfunc) -> None:
             i = block.size() - 1
             while i >= 0:
                 child = block[i]
-                if child.op == ida_hexrays.cit_empty:
+                if child.op == ida_hexrays.cit_empty and child.label_num == -1:
                     _erase_at(block, i)
                 i -= 1
             return 0
