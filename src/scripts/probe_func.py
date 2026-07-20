@@ -21,6 +21,7 @@ Each section is delimited so a shell consumer can grep/awk it out.
 
 import contextlib
 import sys
+from typing import TYPE_CHECKING
 
 import ida_auto
 import ida_funcs
@@ -28,22 +29,10 @@ import ida_hexrays
 import ida_lines
 import idc
 
+if TYPE_CHECKING:
+    from ioshelper.base.config import Config, Feature
+
 _DEFAULT_SECTIONS = ("pseudo", "lvars", "ast", "calls", "mc")
-
-_OP_NAME_CACHE: dict[tuple[str, int], str] = {}
-
-
-def _op_name(op: int, prefix: str = "cot_") -> str:
-    """Look up the symbolic name of a `cot_*` / `cit_*` / `m_*` op constant."""
-    key = (prefix, op)
-    cached = _OP_NAME_CACHE.get(key)
-    if cached is not None:
-        return cached
-    for name in dir(ida_hexrays):
-        if name.startswith(prefix) and getattr(ida_hexrays, name, None) == op:
-            _OP_NAME_CACHE[key] = name
-            return name
-    return f"{prefix}{op}"
 
 
 def _banner(title: str) -> None:
@@ -93,99 +82,23 @@ def dump_lvars(cfunc: ida_hexrays.cfunc_t) -> None:
     _end("LVARS")
 
 
-# --- AST --------------------------------------------------------------------
-
-
-def _describe_expr(e: ida_hexrays.cexpr_t, lvars: ida_hexrays.lvars_t) -> str:
-    op = e.op
-    name = _op_name(op, "cot_")
-    if op == ida_hexrays.cot_var:
-        lname = lvars[e.v.idx].name if e.v.idx < lvars.size() else f"#{e.v.idx}"
-        return f"{name} idx={e.v.idx} ({lname})"
-    if op == ida_hexrays.cot_num:
-        return f"{name} val={e.numval()} (0x{e.numval():x})"
-    if op == ida_hexrays.cot_obj:
-        return f"{name} ea={e.obj_ea:#x} name={idc.get_name(e.obj_ea)!r}"
-    if op == ida_hexrays.cot_str:
-        return f"{name} str={e.string!r}"
-    if op == ida_hexrays.cot_call:
-        callee_name = idc.get_name(e.x.obj_ea) if e.x.op == ida_hexrays.cot_obj else f"<{_op_name(e.x.op, 'cot_')}>"
-        argc = e.a.size() if e.a is not None else 0
-        return f"{name} -> {callee_name!r}, argc={argc}"
-    if op == ida_hexrays.cot_memptr:
-        return f"{name} ->m{e.m}"
-    if op == ida_hexrays.cot_memref:
-        return f"{name} .m{e.m}"
-    if op == ida_hexrays.cot_cast:
-        try:
-            ty = str(e.type)
-        except Exception:
-            ty = "?"
-        return f"{name} to {ty}"
-    return name
+# --- AST / calls (shared with the IPC server via ioshelper.debug.dump_ctree) --
 
 
 def dump_ast(cfunc: ida_hexrays.cfunc_t) -> None:
+    # Imported lazily: `_install_ioshelper_hooks` has put the repo's src/ on sys.path by now.
+    from ioshelper.debug.dump_ctree import dump_ast as dump_ast_text
+
     _banner("AST")
-    lvars = cfunc.get_lvars()
-
-    class V(ida_hexrays.ctree_visitor_t):
-        def __init__(self):
-            super().__init__(ida_hexrays.CV_PARENTS | ida_hexrays.CV_FAST)
-            self.depth = 0
-
-        def _indent(self) -> str:
-            return "  " * self.depth
-
-        def visit_insn(self, ins: ida_hexrays.cinsn_t) -> int:
-            print(f"{self._indent()}insn {_op_name(ins.op, 'cit_')} ea={ins.ea:#x}")
-            self.depth += 1
-            return 0
-
-        def leave_insn(self, _ins: ida_hexrays.cinsn_t) -> int:
-            self.depth -= 1
-            return 0
-
-        def visit_expr(self, e: ida_hexrays.cexpr_t) -> int:
-            print(f"{self._indent()}expr {_describe_expr(e, lvars)}")
-            self.depth += 1
-            return 0
-
-        def leave_expr(self, _e: ida_hexrays.cexpr_t) -> int:
-            self.depth -= 1
-            return 0
-
-    V().apply_to(cfunc.body, None)
+    print(dump_ast_text(cfunc))
     _end("AST")
 
 
-# --- calls -----------------------------------------------------------------
-
-
 def dump_calls(cfunc: ida_hexrays.cfunc_t) -> None:
+    from ioshelper.debug.dump_ctree import dump_calls as dump_calls_text
+
     _banner("CALLS")
-    lvars = cfunc.get_lvars()
-
-    class V(ida_hexrays.ctree_visitor_t):
-        def __init__(self):
-            super().__init__(ida_hexrays.CV_FAST)
-
-        def visit_expr(self, e: ida_hexrays.cexpr_t) -> int:
-            if e.op != ida_hexrays.cot_call:
-                return 0
-            callee_name = (
-                idc.get_name(e.x.obj_ea) if e.x.op == ida_hexrays.cot_obj else f"<indirect:{_op_name(e.x.op, 'cot_')}>"
-            )
-            args_repr: list[str] = []
-            if e.a is not None:
-                for i in range(e.a.size()):
-                    args_repr.append(_describe_expr(e.a[i], lvars))
-            print(f"  call @ {e.ea:#x}: {callee_name}")
-            for i, a in enumerate(args_repr):
-                print(f"    arg{i}: {a}")
-            return 0
-
-    V().apply_to(cfunc.body, None)
+    print(dump_calls_text(cfunc))
     _end("CALLS")
 
 
@@ -262,11 +175,40 @@ _LIVE_HOOKS: list = []
 _LIVE_OPTIMIZERS: list = []
 
 
+def _component_skip_reason(
+    config: "Config", name: str, feature: "Feature | None", *, experimental: bool = False
+) -> str | None:
+    """
+    Return why the component `name` should be skipped per `ioshelper.cfg`, or `None` to install it.
+
+    Mirrors the gating in `core.get_modules_for_file`: feature groups, per-component
+    disables, and experimental opt-ins.
+
+    Args:
+        config: The parsed `ioshelper.cfg`.
+        name: The component's name, as used by `disabled_components`/`experimental_components`.
+        feature: The feature group the component belongs to, or `None` for ungrouped ones.
+        experimental: Whether the component requires an `experimental_components` opt-in.
+
+    Returns:
+        A human-readable skip reason, or `None` when the component should be installed.
+    """
+    if feature is not None and not config.is_feature_enabled(feature):
+        return f"feature {feature.value!r} disabled via disabled_features"
+    if not config.is_component_enabled(name):
+        return "disabled via disabled_components"
+    if experimental and not config.is_experimental_enabled(name):
+        return "experimental; enable via experimental_components"
+    return None
+
+
 def _install_ioshelper_hooks() -> None:
     """
     Headless idat skips installing Hexrays_Hooks subclasses that the plugin
-    registers, so we instantiate + `.hook()` each one ourselves. Easier than
-    teaching reloadable_plugin to also run in headless mode."""
+    registers, so we instantiate + `.hook()` each one ourselves, honoring the
+    same `ioshelper.cfg` gating (features / disabled / experimental components)
+    as the GUI plugin core. Easier than teaching reloadable_plugin to also run
+    in headless mode."""
     import os
 
     here = os.path.dirname(os.path.abspath(__file__))
@@ -275,7 +217,10 @@ def _install_ioshelper_hooks() -> None:
         sys.path.insert(0, repo_src)
 
     try:
+        from ioshelper.base.config import Config, Feature
         from ioshelper.plugins.objc.objc_arg_renamer.hook import ObjcArgRenameHook
+        from ioshelper.plugins.objc.objc_getter_setter import OBJC_GETTER_SETTER_COMPONENT_NAME
+        from ioshelper.plugins.objc.objc_getter_setter.hook import ObjcGetterSetterRenameHook
         from ioshelper.plugins.swift.swift_oslog.log_hook import SwiftLogRewriteHook
         from ioshelper.plugins.swift.swift_types.prolog_rewrite import SwiftPrologRewriteHook
         from ioshelper.plugins.swift.swift_types.swift_types import SwiftClassCallHook
@@ -283,7 +228,23 @@ def _install_ioshelper_hooks() -> None:
         print(f"[probe] failed to import hooks: {exc!r}", file=sys.stderr)
         return
 
-    for cls in (SwiftClassCallHook, SwiftPrologRewriteHook, SwiftLogRewriteHook, ObjcArgRenameHook):
+    config = Config.load()
+
+    # Each spec is (component name, feature, experimental, hook class), mirroring the
+    # component definitions in each feature's `__init__.py` so the config gates the
+    # probe's installs by the same names as the GUI.
+    hook_specs = [
+        ("swift-class-call", Feature.SWIFT, False, SwiftClassCallHook),
+        ("swift-prolog-rewrite", Feature.SWIFT, False, SwiftPrologRewriteHook),
+        ("swift-oslog", Feature.SWIFT, False, SwiftLogRewriteHook),
+        ("objc-arg-renamer-auto", Feature.OBJC, False, ObjcArgRenameHook),
+        (OBJC_GETTER_SETTER_COMPONENT_NAME, Feature.OBJC, True, ObjcGetterSetterRenameHook),
+    ]
+    for name, feature, experimental, cls in hook_specs:
+        reason = _component_skip_reason(config, name, feature, experimental=experimental)
+        if reason is not None:
+            print(f"[probe] skipping hook component {name!r}: {reason}")
+            continue
         try:
             h = cls()
             ok = h.hook()
@@ -293,28 +254,39 @@ def _install_ioshelper_hooks() -> None:
             print(f"[probe] {cls.__name__} install failed: {exc!r}", file=sys.stderr)
 
     # Headless idat also skips the StartupScript components, so the one-shot
-    # IDB setup (`fix_swift_types`) hasn't run. Invoke it once so the probe
-    # sees the same type system the user's real IDA does.
-    try:
-        from ioshelper.plugins.swift.swift_types.swift_types import fix_swift_types
+    # IDB setup (`fix_swift_types`, the GUI's `swift-types` component) hasn't
+    # run. Invoke it once so the probe sees the same type system the user's
+    # real IDA does.
+    reason = _component_skip_reason(config, "swift-types", Feature.SWIFT)
+    if reason is not None:
+        print(f"[probe] skipping startup component 'swift-types': {reason}")
+    else:
+        try:
+            from ioshelper.plugins.swift.swift_types.swift_types import fix_swift_types
 
-        fix_swift_types()
-        print("[probe] ran fix_swift_types()")
-    except Exception as exc:
-        print(f"[probe] fix_swift_types failed: {exc!r}", file=sys.stderr)
+            fix_swift_types()
+            print("[probe] ran fix_swift_types()")
+        except Exception as exc:
+            print(f"[probe] fix_swift_types failed: {exc!r}", file=sys.stderr)
 
-    _install_ioshelper_optimizers()
+    _install_ioshelper_optimizers(config)
 
 
-def _install_ioshelper_optimizers() -> None:
+def _install_ioshelper_optimizers(config: "Config") -> None:
     """
     Install the plugin's microcode optimizers, which headless idat also skips.
 
     Covers the os_log optimizers plus the DSC stub retargeting that exposes the clean
     callee names the os_log matchers rely on (install order is not load-bearing:
-    optinsn_t optimizers rerun after any change).
+    optinsn_t optimizers rerun after any change). Each optimizer is gated by the same
+    `ioshelper.cfg` component names as the GUI.
+
+    Args:
+        config: The parsed `ioshelper.cfg`.
     """
     try:
+        from ioshelper.base.config import Feature
+        from ioshelper.plugins.dsc.stub_calls import STUB_CALLS_COMPONENT_NAME
         from ioshelper.plugins.dsc.stub_calls.optimizer import stub_call_optimizer_t
         from ioshelper.plugins.objc.oslog.error_case_optimizer import log_error_case_optimizer_t
         from ioshelper.plugins.objc.oslog.log_enabled_optimizer import os_log_enabled_optimizer_t
@@ -323,14 +295,28 @@ def _install_ioshelper_optimizers() -> None:
         print(f"[probe] failed to import optimizers: {exc!r}", file=sys.stderr)
         return
 
-    for factory in (stub_call_optimizer_t, log_error_case_optimizer_t, os_log_enabled_optimizer_t, log_macro_optimizer):
-        try:
-            o = factory()
-            o.install()
-            _LIVE_OPTIMIZERS.append(o)
-            print(f"[probe] installed {factory.__name__} optimizer")
-        except Exception as exc:
-            print(f"[probe] {factory.__name__} install failed: {exc!r}", file=sys.stderr)
+    optimizer_specs = [
+        (STUB_CALLS_COMPONENT_NAME, None, True, [stub_call_optimizer_t]),
+        (
+            "oslog-optimizer",
+            Feature.OBJC,
+            False,
+            [log_error_case_optimizer_t, os_log_enabled_optimizer_t, log_macro_optimizer],
+        ),
+    ]
+    for name, feature, experimental, factories in optimizer_specs:
+        reason = _component_skip_reason(config, name, feature, experimental=experimental)
+        if reason is not None:
+            print(f"[probe] skipping optimizer component {name!r}: {reason}")
+            continue
+        for factory in factories:
+            try:
+                o = factory()
+                o.install()
+                _LIVE_OPTIMIZERS.append(o)
+                print(f"[probe] installed {factory.__name__} optimizer")
+            except Exception as exc:
+                print(f"[probe] {factory.__name__} install failed: {exc!r}", file=sys.stderr)
 
 
 def main() -> None:

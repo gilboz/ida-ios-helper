@@ -45,8 +45,10 @@ _LIVE_OPTIMIZERS: list = []
 def _install_hooks_and_setup() -> None:  # noqa: C901
     """
     Unhook any existing hooks, re-import the plugin modules, install
-    fresh hook instances, and run `fix_swift_types()`. Safe to call
-    repeatedly — that's the whole point of the `reload` command."""
+    fresh hook instances, and run `fix_swift_types()` — honoring the same
+    `ioshelper.cfg` gating (features / disabled / experimental components)
+    as the GUI plugin core. Safe to call repeatedly — that's the whole
+    point of the `reload` command."""
     global _LIVE_HOOKS, _LIVE_OPTIMIZERS
     for h in _LIVE_HOOKS:
         with contextlib.suppress(Exception):
@@ -64,6 +66,12 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
 
     # Reload every plugin module whose source the user might edit.
     for modname in (
+        # idahelper modules the plugin modules below consume — reloaded first so the
+        # consumers rebind fresh symbols when they reload in turn.
+        "idahelper.naming",
+        "idahelper.objc",
+        "idahelper.ast.citem",
+        "idahelper.ast.cexpr",
         "ioshelper.plugins.swift.swift_types.swift_types",
         "ioshelper.plugins.swift.swift_types.prolog_rewrite",
         "ioshelper.plugins.swift.swift_oslog.log_hook",
@@ -76,7 +84,13 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         "ioshelper.plugins.objc.objc_arg_renamer.renamer",
         # Reloaded after `renamer` so the hook re-imports the fresh rename function.
         "ioshelper.plugins.objc.objc_arg_renamer.hook",
+        "ioshelper.plugins.objc.objc_getter_setter.renamer",
+        # Reloaded after `renamer` so the hook re-imports the fresh rename function.
+        "ioshelper.plugins.objc.objc_getter_setter.hook",
         "ioshelper.plugins.objc.oslog.os_log",
+        "ioshelper.debug.dump_ctree",
+        # Reloaded after `dump_ctree` so `dump_ps` re-imports the fresh `dump_ast`.
+        "ioshelper.debug.dump_pseudocode",
         "ioshelper.plugins.objc.oslog.log_macro_optimizer",
         "ioshelper.plugins.objc.oslog.log_enabled_optimizer",
         "ioshelper.plugins.objc.oslog.error_case_optimizer",
@@ -94,9 +108,12 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         else:
             __import__(modname)
 
-    from ioshelper.base.config import Config
+    from ioshelper.base.config import Config, Feature
+    from ioshelper.plugins.dsc.stub_calls import STUB_CALLS_COMPONENT_NAME
     from ioshelper.plugins.dsc.stub_calls.optimizer import stub_call_optimizer_t
     from ioshelper.plugins.objc.objc_arg_renamer.hook import ObjcArgRenameHook
+    from ioshelper.plugins.objc.objc_getter_setter import OBJC_GETTER_SETTER_COMPONENT_NAME
+    from ioshelper.plugins.objc.objc_getter_setter.hook import ObjcGetterSetterRenameHook
     from ioshelper.plugins.objc.objc_msgsend_args import OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME
     from ioshelper.plugins.objc.objc_msgsend_args.optimizer import objc_msgsend_argcount_optimizer_t
     from ioshelper.plugins.objc.objc_sugar.objc_msgsend import objc_msgsend_hexrays_hooks_t
@@ -108,54 +125,85 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
     from ioshelper.plugins.swift.swift_types.prolog_rewrite import SwiftPrologRewriteHook
     from ioshelper.plugins.swift.swift_types.swift_types import SwiftClassCallHook, fix_swift_types
 
-    for cls in (
-        SwiftClassCallHook,
-        SwiftPrologRewriteHook,
-        SwiftLogRewriteHook,
-        # Match core.objc_plugins order: msgsend installed before sugar so it fires after it.
-        objc_msgsend_hexrays_hooks_t,
-        objc_selector_hexrays_hooks_t,
-        # Maturity hook (different event from the text hooks above, order-independent).
-        ObjcArgRenameHook,
-    ):
-        try:
-            h = cls()
-            h.hook()
-            _LIVE_HOOKS.append(h)
-        except Exception as exc:
-            print(f"[ipc] install {cls.__name__}: {exc!r}")
+    # Re-read the config on every reload so a config edit doesn't need a restart.
+    config = Config.load()
+
+    def skip_reason(name: str, feature: Feature | None, *, experimental: bool = False) -> str | None:
+        """
+        Return why the component `name` should be skipped per `ioshelper.cfg`, or `None` to install it.
+
+        Mirrors the gating in `core.get_modules_for_file`: feature groups, per-component
+        disables, and experimental opt-ins."""
+        if feature is not None and not config.is_feature_enabled(feature):
+            return f"feature {feature.value!r} disabled via disabled_features"
+        if not config.is_component_enabled(name):
+            return "disabled via disabled_components"
+        if experimental and not config.is_experimental_enabled(name):
+            return "experimental; enable via experimental_components"
+        return None
+
+    # Each spec is (component name, feature, experimental, classes), mirroring the component
+    # definitions in each feature's `__init__.py` so the config gates headless installs by
+    # the same names as the GUI. Hook order matters — hooks fire in reverse install order:
+    # objc-sugar's msgSend hook is listed before its selector hook so it fires after it
+    # (match core.objc_plugins order). The maturity hooks (objc-arg-renamer-auto,
+    # objc-getter-setter-renamer) use a different event and are order-independent.
+    hook_specs: list[tuple[str, Feature | None, bool, list]] = [
+        ("swift-class-call", Feature.SWIFT, False, [SwiftClassCallHook]),
+        ("swift-prolog-rewrite", Feature.SWIFT, False, [SwiftPrologRewriteHook]),
+        ("swift-oslog", Feature.SWIFT, False, [SwiftLogRewriteHook]),
+        ("objc-sugar", Feature.OBJC, False, [objc_msgsend_hexrays_hooks_t, objc_selector_hexrays_hooks_t]),
+        ("objc-arg-renamer-auto", Feature.OBJC, False, [ObjcArgRenameHook]),
+        (OBJC_GETTER_SETTER_COMPONENT_NAME, Feature.OBJC, True, [ObjcGetterSetterRenameHook]),
+    ]
+    for name, feature, experimental, hook_classes in hook_specs:
+        reason = skip_reason(name, feature, experimental=experimental)
+        if reason is not None:
+            print(f"[ipc] skipping hook component {name!r}: {reason}")
+            continue
+        for cls in hook_classes:
+            try:
+                h = cls()
+                h.hook()
+                _LIVE_HOOKS.append(h)
+            except Exception as exc:
+                print(f"[ipc] install {cls.__name__}: {exc!r}")
     # Microcode optimizers: headless `idat` doesn't auto-install the plugin's
     # `optinsn_t`/`optblock_t` optimizers, so instantiate the ones whose output the
-    # probe needs to reflect. `objc_msgsend_argcount` (trims over-counted msgSend args)
-    # is experimental/WIP, so gate it on the same opt-in flag as `core.objc_plugins`.
-    # Re-read the config on every reload so toggling the flag doesn't need a restart.
-    config = Config.load()
-    # The DSC stub retargeting exposes the clean callee names the os_log matchers rely on.
-    # Install order is not load-bearing for optinsn_t: any change reruns the optimizers.
-    optimizers: list = [
-        stub_call_optimizer_t,
-        log_error_case_optimizer_t,
-        os_log_enabled_optimizer_t,
-        log_macro_optimizer,
+    # probe needs to reflect. The DSC stub retargeting exposes the clean callee names
+    # the os_log matchers rely on. Install order is not load-bearing for optinsn_t:
+    # any change reruns the optimizers.
+    optimizer_specs: list[tuple[str, Feature | None, bool, list]] = [
+        (STUB_CALLS_COMPONENT_NAME, None, True, [stub_call_optimizer_t]),
+        (
+            "oslog-optimizer",
+            Feature.OBJC,
+            False,
+            [log_error_case_optimizer_t, os_log_enabled_optimizer_t, log_macro_optimizer],
+        ),
+        (OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME, Feature.OBJC, True, [objc_msgsend_argcount_optimizer_t]),
     ]
-    if config.is_experimental_enabled(OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME):
-        optimizers.append(objc_msgsend_argcount_optimizer_t)
+    for name, feature, experimental, optimizer_classes in optimizer_specs:
+        reason = skip_reason(name, feature, experimental=experimental)
+        if reason is not None:
+            print(f"[ipc] skipping optimizer component {name!r}: {reason}")
+            continue
+        for opt_cls in optimizer_classes:
+            try:
+                o = opt_cls()
+                o.install()
+                _LIVE_OPTIMIZERS.append(o)
+            except Exception as exc:
+                print(f"[ipc] install {opt_cls.__name__}: {exc!r}")
+    # `fix_swift_types` is the `swift-types` StartupScript component in the GUI.
+    reason = skip_reason("swift-types", Feature.SWIFT)
+    if reason is not None:
+        print(f"[ipc] skipping startup component 'swift-types': {reason}")
     else:
-        print(
-            f"[ipc] skipping experimental optimizer {OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME!r}"
-            " (enable via experimental_components in ioshelper.cfg)"
-        )
-    for opt_cls in optimizers:
         try:
-            o = opt_cls()
-            o.install()
-            _LIVE_OPTIMIZERS.append(o)
+            fix_swift_types()
         except Exception as exc:
-            print(f"[ipc] install {opt_cls.__name__}: {exc!r}")
-    try:
-        fix_swift_types()
-    except Exception as exc:
-        print(f"[ipc] fix_swift_types: {exc!r}")
+            print(f"[ipc] fix_swift_types: {exc!r}")
     # Invalidate every cached cfunc so subsequent `decompile` calls don't
     # serve stale pseudo from before the reload.
     with contextlib.suppress(Exception):
@@ -207,6 +255,17 @@ def _decompile(ea_raw, sections: list[str] | None = None, passes: int = 3) -> st
             except Exception:
                 t = "?"
             out.append(f"  [{i}] {lv.name}: {t}")
+    # Imported lazily so `reload` serves the freshly re-imported dump code.
+    if "ast" in sections:
+        from ioshelper.debug.dump_ctree import dump_ast
+
+        out.append("=== ast ===")
+        out.append(dump_ast(cfunc))
+    if "calls" in sections:
+        from ioshelper.debug.dump_ctree import dump_calls
+
+        out.append("=== calls ===")
+        out.append(dump_calls(cfunc))
     return "\n".join(out)
 
 

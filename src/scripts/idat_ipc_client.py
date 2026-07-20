@@ -46,7 +46,7 @@ def main() -> int:
     sub.add_parser("quit")
     dec = sub.add_parser("decompile")
     dec.add_argument("ea")
-    dec.add_argument("--sections", nargs="+", default=["pseudo"], choices=["pseudo", "lvars"])
+    dec.add_argument("--sections", nargs="+", default=["pseudo"], choices=["pseudo", "lvars", "ast", "calls"])
     dec.add_argument("--passes", type=int, default=3)
     ev = sub.add_parser("eval")
     ev.add_argument("code")
