@@ -14,13 +14,13 @@ SHORTCUT = "Shift+F3"
 
 dump_ps_component = UIActionsComponent.factory(
     "dump-pseudocode",
-    "Dump annotated pseudocode to /tmp/pseudocode.txt (debug)",
+    "Dump annotated pseudocode to /tmp/pseudocode.txt and its ctree to /tmp/ctree.txt (debug)",
     [
         lambda core: UIAction(
             ACTION_ID,
             idaapi.action_desc_t(
                 ACTION_ID,
-                "Dump annotated pseudocode to /tmp/pseudocode.txt",
+                "Dump annotated pseudocode to /tmp/pseudocode.txt and ctree to /tmp/ctree.txt",
                 DumpPseudocodeAction(),
                 SHORTCUT,
             ),

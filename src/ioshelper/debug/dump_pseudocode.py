@@ -12,6 +12,8 @@ import ida_hexrays
 import idc
 from idahelper.pseudocode import Anchor, Line, Pseudocode, Section
 
+from .dump_ctree import dump_ast
+
 
 def _anchor_label(anchor: Anchor) -> str:
     """Format a decoded anchor like `CITEM#3 0x000…003` (or a plain `0x…`)."""
@@ -50,13 +52,24 @@ def annotate_tagged_line(tagged: str, *, show_addr_tags: bool = True) -> str:
     return annotate_line(Line.parse(tagged), show_addr_tags=show_addr_tags)
 
 
-def dump_ps(*, ea: int | None = None, out_path: str = "/tmp/pseudocode.txt", show_addr_tags: bool = True) -> str:  # noqa: S108
+def dump_ps(
+    *,
+    ea: int | None = None,
+    out_path: str = "/tmp/pseudocode.txt",  # noqa: S108
+    ctree_out_path: str = "/tmp/ctree.txt",  # noqa: S108
+    show_addr_tags: bool = True,
+) -> str:
     """
-    Decompile a function and write annotated, section-grouped pseudocode to disk.
+    Decompile a function and write annotated pseudocode plus its ctree dump to disk.
+
+    The section-grouped annotated pseudocode goes to `out_path`; the same decompilation's
+    ctree (see `dump_ctree.dump_ast`) goes to `ctree_out_path`, so the rendered tokens and
+    the tree they came from can be compared side by side.
 
     Args:
         ea: Function entry point. Defaults to `idc.get_screen_ea()`.
         out_path: Output file path for the annotated pseudocode.
+        ctree_out_path: Output file path for the ctree dump.
         show_addr_tags: Passed through to `annotate_line`.
 
     Returns:
@@ -83,6 +96,11 @@ def dump_ps(*, ea: int | None = None, out_path: str = "/tmp/pseudocode.txt", sho
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(annotated)
-
     print(f"written {len(annotated)} characters to {out_path}")
+
+    ctree = dump_ast(cfunc)
+    with open(ctree_out_path, "w", encoding="utf-8") as f:
+        f.write(ctree)
+    print(f"written {len(ctree)} characters to {ctree_out_path}")
+
     return annotated

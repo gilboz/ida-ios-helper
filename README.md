@@ -364,7 +364,7 @@ Always loaded:
 | `mark-outline-functions` | Locate all the outlined functions and mark them as such | ✔ |
 | `segment-xrefs` | Show xrefs inside a segment | ✔ |
 | `globals` | Expose helper functions in the IDA Python console | |
-| `dump-pseudocode` | Dump annotated pseudocode to `/tmp/pseudocode.txt` (debug mode only) | ✔ |
+| `dump-pseudocode` | Dump annotated pseudocode to `/tmp/pseudocode.txt` and its ctree to `/tmp/ctree.txt` (debug mode only) | ✔ |
 
 Obj-C binaries, including dyld_shared_cache (`disabled_features = ["objc"]` skips them all):
 
