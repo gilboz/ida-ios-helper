@@ -89,8 +89,8 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         "ioshelper.plugins.objc.objc_lvar_renamer.heuristics",
         "ioshelper.plugins.objc.objc_lvar_renamer.args_source",
         "ioshelper.plugins.objc.objc_lvar_renamer.call_sources",
-        "ioshelper.plugins.objc.objc_lvar_renamer.pipeline",
-        "ioshelper.plugins.objc.objc_lvar_renamer.hook",
+        "ioshelper.plugins.objc.objc_lvar_renamer.options",
+        "ioshelper.plugins.objc.objc_lvar_renamer.renamer",
         "ioshelper.plugins.objc.oslog.os_log",
         "ioshelper.debug.dump_ctree",
         # Reloaded after `dump_ctree` so `dump_ps` re-imports the fresh `dump_ast`.
@@ -116,7 +116,7 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
     from ioshelper.plugins.dsc.stub_calls import STUB_CALLS_COMPONENT_NAME
     from ioshelper.plugins.dsc.stub_calls.optimizer import stub_call_optimizer_t
     from ioshelper.plugins.objc.objc_lvar_renamer import OBJC_LVAR_RENAMER_COMPONENT_NAME
-    from ioshelper.plugins.objc.objc_lvar_renamer.hook import ObjcLvarRenameHook
+    from ioshelper.plugins.objc.objc_lvar_renamer.renamer import ObjcLvarRenameHook
     from ioshelper.plugins.objc.objc_msgsend_args import OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME
     from ioshelper.plugins.objc.objc_msgsend_args.optimizer import objc_msgsend_argcount_optimizer_t
     from ioshelper.plugins.objc.objc_sugar.objc_msgsend import objc_msgsend_hexrays_hooks_t
@@ -150,8 +150,8 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
     # the same names as the GUI. Hook order matters — hooks fire in reverse install order:
     # objc-sugar's msgSend hook is listed before its selector hook so it fires after it
     # (match core.objc_plugins order). The objc-lvar-renamer maturity hook uses a different
-    # event and is order-independent; its individual name sources (objc-rename-*) are
-    # gated inside its pipeline by the same config lists.
+    # event and is order-independent; its individual name sources are booleans in the
+    # config's [objc-lvar-renamer] section, resolved by the hook itself on instantiation.
     hook_specs: list[tuple[str, Feature | None, bool, list]] = [
         ("swift-class-call", Feature.SWIFT, False, [SwiftClassCallHook]),
         ("swift-prolog-rewrite", Feature.SWIFT, False, [SwiftPrologRewriteHook]),

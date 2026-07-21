@@ -18,5 +18,14 @@ disabled_features = []
 disabled_components = []
 
 # Work-in-progress components to opt into, by name. These are disabled by default.
-# e.g. experimental_components = ["objc-msgsend-argcount", "objc-rename-getters", "objc-rename-callee-args"]
+# e.g. experimental_components = ["objc-msgsend-argcount", "dsc-stub-calls"]
 experimental_components = []
+
+# Per-component settings: a TOML table named after a component holds that component's
+# own options. Every key is optional; the values shown are the defaults.
+
+# Which name sources the Obj-C lvar renamer (`objc-lvar-renamer`) runs.
+# [objc-lvar-renamer]
+# args = true          # the function's own selector names its arguments
+# getters = false      # a variable assigned from a getter is named after it (WIP)
+# callee-args = false  # a variable passed at a selector keyword position (WIP)

@@ -219,7 +219,7 @@ def _install_ioshelper_hooks() -> None:
     try:
         from ioshelper.base.config import Config, Feature
         from ioshelper.plugins.objc.objc_lvar_renamer import OBJC_LVAR_RENAMER_COMPONENT_NAME
-        from ioshelper.plugins.objc.objc_lvar_renamer.hook import ObjcLvarRenameHook
+        from ioshelper.plugins.objc.objc_lvar_renamer.renamer import ObjcLvarRenameHook
         from ioshelper.plugins.swift.swift_oslog.log_hook import SwiftLogRewriteHook
         from ioshelper.plugins.swift.swift_types.prolog_rewrite import SwiftPrologRewriteHook
         from ioshelper.plugins.swift.swift_types.swift_types import SwiftClassCallHook
@@ -232,7 +232,8 @@ def _install_ioshelper_hooks() -> None:
     # Each spec is (component name, feature, experimental, hook class), mirroring the
     # component definitions in each feature's `__init__.py` so the config gates the
     # probe's installs by the same names as the GUI. The objc-lvar-renamer's individual
-    # name sources (objc-rename-*) are gated inside its pipeline by the same config lists.
+    # name sources are booleans in the config's [objc-lvar-renamer] section, resolved by
+    # the hook itself on instantiation.
     hook_specs = [
         ("swift-class-call", Feature.SWIFT, False, SwiftClassCallHook),
         ("swift-prolog-rewrite", Feature.SWIFT, False, SwiftPrologRewriteHook),

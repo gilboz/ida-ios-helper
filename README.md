@@ -340,6 +340,10 @@ See [`ioshelper.cfg.example`](ioshelper.cfg.example) for a documented template c
 every setting (`debug`, `disabled_features`, `disabled_components`, and
 `experimental_components`). Copy it to `~/.idapro/ioshelper.cfg` and edit it to taste.
 
+In addition to the top-level settings, a component can have options of its own, set in
+a TOML table named after it — see the `[objc-lvar-renamer]` section below for the
+current example.
+
 Edit the file and reload the plugin (`F2` in debug mode, or `ioshelper.reload()`) to pick
 up changes.
 
@@ -351,70 +355,84 @@ experimental ones, in `experimental_components`) in the config file.
 A check in the **UI only** column means the component only makes sense with the IDA GUI;
 it is skipped automatically when running headless (idalib / idat).
 
+A check in the **Experimental** column means the component is work-in-progress and off by
+default; it only loads when its name is listed in `experimental_components`.
+
 Always loaded:
 
-| Name | Description | UI only |
-|---|---|:-:|
-| `this-arg-fixer` | Convert the first function argument to this/self | ✔ |
-| `toggle-mount` | Toggle the plugin's optimizations on/off at runtime | ✔ |
-| `clang-blocks-args` | Analyze stack-allocated Clang blocks and their `__block` arguments | ✔ |
-| `clang-blocks-optimizer` | Optimize Clang blocks initialization in the decompiler | |
-| `jump-to-string` | Jump to a function using a specific string | ✔ |
-| `range-condition-optimizer` | Simplify range-check conditions in the decompiler | |
-| `mark-outline-functions` | Locate all the outlined functions and mark them as such | ✔ |
-| `segment-xrefs` | Show xrefs inside a segment | ✔ |
-| `globals` | Expose helper functions in the IDA Python console | |
-| `dump-pseudocode` | Dump annotated pseudocode to `/tmp/pseudocode.txt` and its ctree to `/tmp/ctree.txt` (debug mode only) | ✔ |
+| Name | Description | UI only | Experimental |
+|---|---|:-:|:-:|
+| `this-arg-fixer` | Convert the first function argument to this/self | ✔ | |
+| `toggle-mount` | Toggle the plugin's optimizations on/off at runtime | ✔ | |
+| `clang-blocks-args` | Analyze stack-allocated Clang blocks and their `__block` arguments | ✔ | |
+| `clang-blocks-optimizer` | Optimize Clang blocks initialization in the decompiler | | |
+| `jump-to-string` | Jump to a function using a specific string | ✔ | |
+| `range-condition-optimizer` | Simplify range-check conditions in the decompiler | | |
+| `mark-outline-functions` | Locate all the outlined functions and mark them as such | ✔ | |
+| `segment-xrefs` | Show xrefs inside a segment | ✔ | |
+| `globals` | Expose helper functions in the IDA Python console | | |
+| `dump-pseudocode` | Dump annotated pseudocode to `/tmp/pseudocode.txt` and its ctree to `/tmp/ctree.txt` (debug mode only) | ✔ | |
 
 Obj-C binaries, including dyld_shared_cache (`disabled_features = ["objc"]` skips them all):
 
-| Name | Description | UI only |
-|---|---|:-:|
-| `oslog-optimizer` | Optimize os_log calls in the decompiler | |
-| `objc-xrefs` | Show Obj-C xrefs of methods and selectors | ✔ |
-| `objc-optimizers` | Obj-C decompiler optimizers | |
-| `objc-lvar-renamer` | Name default-named local variables from Obj-C selectors on decompilation, via the name sources below | |
-| `objc-rename-args` | Name source: the function's own selector names its arguments (`initWithFrame:` -> `frame`) | |
-| `objc-rename-getters` | Name source: a variable assigned from a getter is named after it (`v5 = [obj title]` -> `title`; experimental, opt-in) | |
-| `objc-rename-callee-args` | Name source: a variable passed at a selector keyword position is named from the keyword (`[obj setTitle:v5]` -> `title`; experimental, opt-in) | |
-| `objc-sugar` | Rewrite objc_msgSend calls and selectors as Obj-C syntax | |
-| `objc-msgsend-argcount` | Derive objc_msgSend argument count from the selector (experimental, opt-in) | |
+| Name | Description | UI only | Experimental |
+|---|---|:-:|:-:|
+| `oslog-optimizer` | Optimize os_log calls in the decompiler | | |
+| `objc-xrefs` | Show Obj-C xrefs of methods and selectors | ✔ | |
+| `objc-optimizers` | Obj-C decompiler optimizers | | |
+| `objc-lvar-renamer` | Name default-named local variables from Obj-C selectors on decompilation, via the name sources in the table below | | |
+| `objc-sugar` | Rewrite objc_msgSend calls and selectors as Obj-C syntax | | |
+| `objc-msgsend-argcount` | Derive objc_msgSend argument count from the selector | | ✔ |
 
-The `objc-rename-*` entries are the `objc-lvar-renamer`'s individual name sources rather
-than standalone components; they are disabled and opted into by the same
-`disabled_components` / `experimental_components` lists. When several sources want to name
-the same variable, the higher one in the table wins; variables that already carry a
-non-default name are never touched.
+The name sources of `objc-lvar-renamer` are not components; they are boolean options in
+the component's own `[objc-lvar-renamer]` config section (the work-in-progress ones
+default to off):
+
+```toml
+[objc-lvar-renamer]
+args = true
+getters = false
+callee-args = false
+```
+
+| Option | Description | Default |
+|---|---|:-:|
+| `args` | The function's own selector names its arguments (`initWithFrame:` -> `frame`) | on |
+| `getters` | A variable assigned from a getter is named after it (`v5 = [obj title]` -> `title`) | off |
+| `callee-args` | A variable passed at a selector keyword position is named from the keyword (`[obj setTitle:v5]` -> `title`) | off |
+
+When several sources want to name the same variable, the higher one in the table wins;
+variables that already carry a non-default name are never touched.
 
 Swift binaries, including dyld_shared_cache (`disabled_features = ["swift"]` skips them all):
 
-| Name | Description | UI only |
-|---|---|:-:|
-| `swift-types` | Fix Swift types when the database is opened | |
-| `swift-class-call` | Rewrite Swift class method calls in the decompiler | |
-| `swift-prolog-rewrite` | Hide Swift function prologs in the decompiler | |
-| `swift-oslog` | Rewrite Swift os_log calls in the decompiler | |
-| `swift-strings` | Recover inline Swift strings in the decompiler | |
-| `swift-dump-import` | Import Swift type metadata using ipsw's swift-dump | |
-| `swift-dump-config` | Configure the ipsw path for the Swift dump import | ✔ |
+| Name | Description | UI only | Experimental |
+|---|---|:-:|:-:|
+| `swift-types` | Fix Swift types when the database is opened | | |
+| `swift-class-call` | Rewrite Swift class method calls in the decompiler | | |
+| `swift-prolog-rewrite` | Hide Swift function prologs in the decompiler | | |
+| `swift-oslog` | Rewrite Swift os_log calls in the decompiler | | |
+| `swift-strings` | Recover inline Swift strings in the decompiler | | |
+| `swift-dump-import` | Import Swift type metadata using ipsw's swift-dump | | |
+| `swift-dump-config` | Configure the ipsw path for the Swift dump import | ✔ | |
 
 dyld_shared_cache databases:
 
-| Name | Description | UI only |
-|---|---|:-:|
-| `dsc-stub-calls` | Retarget dyld_shared_cache import-stub calls to the real function with a clean name (experimental, opt-in) | |
-| `dsc-organize-functions` | Organize the Functions window into folders: loaded modules' code by module, dyld stubs under 'Dyld Stubs' | ✔ |
-| `dsc-stub-modules` | Report the dyld_shared_cache modules to load so the current function's stub calls resolve (right-click a function; IDA 9.4+) | ✔ |
-| `dsc-baseline-modules` | On open, offer to load the important baseline modules (Obj-C runtime, os_log, CoreFoundation, Foundation) a partial cache is missing (IDA 9.4+) | ✔ |
+| Name | Description | UI only | Experimental |
+|---|---|:-:|:-:|
+| `dsc-stub-calls` | Retarget dyld_shared_cache import-stub calls to the real function with a clean name | | ✔ |
+| `dsc-organize-functions` | Organize the Functions window into folders: loaded modules' code by module, dyld stubs under 'Dyld Stubs' | ✔ | |
+| `dsc-stub-modules` | Report the dyld_shared_cache modules to load so the current function's stub calls resolve (right-click a function; IDA 9.4+) | ✔ | |
+| `dsc-baseline-modules` | On open, offer to load the important baseline modules (Obj-C runtime, os_log, CoreFoundation, Foundation) a partial cache is missing (IDA 9.4+) | ✔ | |
 
 Kernelcache:
 
-| Name | Description | UI only |
-|---|---|:-:|
-| `vtable-xrefs` | Jump to the implementations of a virtual method via the vtables | ✔ |
-| `generic-calls-fixer` | Fix calls to generic kernel functions (safe_metacast, ...) | |
-| `local-func-renamer` | Rename locals and globals based on well-known function calls | |
-| `mass-func-renamer` | Mass rename globals and fields based on well-known function calls | ✔ |
-| `apply-kalloc-types` | Locate all the kalloc_type_view in the kernelcache and apply them on types | ✔ |
-| `apply-pac` | Apply PAC-derived types on the current function | ✔ |
-| `create-kalloc-struct` | Create a struct from the currently selected kalloc_type_view | ✔ |
+| Name | Description | UI only | Experimental |
+|---|---|:-:|:-:|
+| `vtable-xrefs` | Jump to the implementations of a virtual method via the vtables | ✔ | |
+| `generic-calls-fixer` | Fix calls to generic kernel functions (safe_metacast, ...) | | |
+| `local-func-renamer` | Rename locals and globals based on well-known function calls | | |
+| `mass-func-renamer` | Mass rename globals and fields based on well-known function calls | ✔ | |
+| `apply-kalloc-types` | Locate all the kalloc_type_view in the kernelcache and apply them on types | ✔ | |
+| `apply-pac` | Apply PAC-derived types on the current function | ✔ | |
+| `create-kalloc-struct` | Create a struct from the currently selected kalloc_type_view | ✔ | |

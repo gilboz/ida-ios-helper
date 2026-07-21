@@ -6,19 +6,32 @@ loads. The file is parsed once into a `Config` and exposed as the module-level
 `config` singleton. When the file is absent or unreadable the built-in defaults
 apply, so a missing config is never an error.
 
+Besides the top-level keys, any TOML table named after a component is that component's
+own settings (`component_options`); the `Config` itself stays agnostic of what each
+component puts in its table. A component declares its section's schema as a
+`ComponentOptions` dataclass and loads it with `MyOptions.load()`, which validates the
+raw table (unknown keys, wrong types) against the declared fields.
+
 Example:
-    Enable debug mode and drop Swift support when reversing a pure Obj-C binary:
+    Enable debug mode, drop Swift support, and turn on one of the lvar renamer's
+    experimental name sources when reversing a pure Obj-C binary:
 
         debug = true
         disabled_features = ["swift"]
         disabled_components = ["swift-strings", "objc-optimizers"]
+
+        [objc-lvar-renamer]
+        getters = true
 """
 
+import dataclasses
 import tomllib
-from dataclasses import dataclass
+import typing
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 import ida_diskio
 
@@ -45,12 +58,16 @@ class Config:
             plugin core.
         experimental_components: Names of work-in-progress components to opt into. These
             are disabled by default and only loaded when listed here.
+        component_options: Per-component settings: every top-level TOML table, keyed by
+            the component name it is named after. The schema of each table is owned by
+            its component, not by the config.
     """
 
     debug: bool = False
     disabled_features: frozenset[Feature] = frozenset()
     disabled_components: frozenset[str] = frozenset()
     experimental_components: frozenset[str] = frozenset()
+    component_options: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
     def is_feature_enabled(self, feature: Feature) -> bool:
         """
@@ -91,6 +108,19 @@ class Config:
         """
         return name in self.experimental_components
 
+    def options_for(self, component_name: str) -> Mapping[str, Any]:
+        """
+        Return the component's own settings table, `{}` when the config has none.
+
+        Args:
+            component_name: The component's name, i.e. its TOML table's name.
+
+        Returns:
+            The raw parsed table. The component owns its schema: it is responsible for
+            defaults, type checks, and warning about keys it does not recognize.
+        """
+        return self.component_options.get(component_name, {})
+
     @classmethod
     def load(cls, path: Path = CONFIG_PATH) -> Self:
         """
@@ -118,6 +148,7 @@ class Config:
             disabled_features=_parse_features(_string_list(data, "disabled_features")),
             disabled_components=frozenset(_string_list(data, "disabled_components")),
             experimental_components=frozenset(_string_list(data, "experimental_components")),
+            component_options={key: value for key, value in data.items() if isinstance(value, dict)},
         )
 
 
@@ -161,3 +192,76 @@ def _parse_features(names: list[str]) -> frozenset[Feature]:
 
 
 config = Config.load()
+
+
+class ComponentOptions:
+    """
+    Declarative schema of a component's own config section.
+
+    A component subclasses this as a frozen dataclass, naming its section (its component
+    name) in the class definition. Each dataclass field is one option: its TOML key is
+    the field name with underscores spelled as dashes, its default is the field default,
+    and its declared type is enforced when loading. Only plain TOML scalar types make
+    sense here (`bool`, `int`, `float`, `str`) — not parameterized generics.
+
+        @dataclasses.dataclass(frozen=True)
+        class MyOptions(ComponentOptions, section="my-component"):
+            threshold: int = 4
+            callee_args: bool = False  # `callee-args` in the config file
+
+    `load()` reads the section from the `config` singleton and validates it against the
+    declared fields, warning — prefixed with the section name — about unknown keys and
+    wrong-typed values (which fall back to the field's default). Load the options when
+    the component loads, so a config mistake is reported once, at load time, not on
+    every use.
+    """
+
+    _section: ClassVar[str]
+
+    def __init_subclass__(cls, *, section: str, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._section = section
+
+    @classmethod
+    def load(cls) -> Self:
+        """
+        Read and validate the component's section, falling back to defaults per key.
+
+        Returns:
+            The options instance: declared defaults overlaid with the section's valid
+            values. Unknown keys and wrong-typed values are warned about and skipped.
+        """
+        raw = config.options_for(cls._section)
+        hints = typing.get_type_hints(cls)
+        fields_by_key = {f.name.replace("_", "-"): f for f in dataclasses.fields(cls)}
+
+        for key in sorted(raw.keys() - fields_by_key.keys()):
+            known = ", ".join(fields_by_key)
+            print(f"[{cls._section}] config: unknown option {key!r}; ignoring it. Known options: {known}.")
+
+        values: dict[str, Any] = {}
+        for key, f in fields_by_key.items():
+            if key not in raw:
+                continue
+            value = raw[key]
+            expected = hints[f.name]
+            if not _matches_option_type(value, expected):
+                print(
+                    f"[{cls._section}] config: {key!r} must be of type {expected.__name__}, got {value!r}; "
+                    f"using the default ({f.default!r})."
+                )
+                continue
+            values[f.name] = value
+        return cls(**values)
+
+
+def _matches_option_type(value: Any, expected: type) -> bool:
+    """
+    Return whether a raw TOML `value` satisfies an option field's declared type.
+
+    A plain `isinstance` check, except that `bool` is not accepted for `int`/`float`
+    fields (`bool` subclasses `int`, but `threshold = true` is a config mistake).
+    """
+    if expected in (int, float) and isinstance(value, bool):
+        return False
+    return isinstance(value, expected)
