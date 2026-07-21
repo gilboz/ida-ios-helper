@@ -20,9 +20,13 @@ if TYPE_CHECKING:
 # can fire. Keyed by install name, which is what the dscu service resolves.
 IMPORTANT_BASELINE_MODULES: tuple[str, ...] = (
     "/usr/lib/libobjc.A.dylib",
-    "/usr/lib/system/libsystem_trace.dylib",
     "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
     "/System/Library/Frameworks/Foundation.framework/Foundation",
+    "/usr/lib/swift/libswiftCore.dylib",
+    "/usr/lib/system/libsystem_blocks.dylib",  # contains Block definitions
+    "/usr/lib/system/libdispatch.dylib",  # libdispatch is a library for concurrency and event-driven programming.
+    "/usr/lib/system/libsystem_c.dylib",  # contains __stack_chk_guard ptr
+    "/usr/lib/system/libsystem_trace.dylib",  # for os_log optimizations
 )
 
 
