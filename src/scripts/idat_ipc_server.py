@@ -68,13 +68,26 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
     for modname in (
         # idahelper modules the plugin modules below consume — reloaded first so the
         # consumers rebind fresh symbols when they reload in turn.
+        "idahelper.runtime",
         "idahelper.naming",
         "idahelper.objc",
         "idahelper.ast.citem",
+        # `ast.cexpr` imports `ast.lvars`, so lvars reloads first.
+        "idahelper.ast.lvars",
         "idahelper.ast.cexpr",
         # Re-runs `Config.load()`, refreshing the `config` singleton the lvar renamer's
         # per-source gating reads — reloaded before its consumers so they rebind it fresh.
         "ioshelper.base.config",
+        # The clang-blocks feature's modules, in dependency order.
+        "ioshelper.plugins.common.clang_blocks.model.field_assignments",
+        "ioshelper.plugins.common.clang_blocks.model.block_layout",
+        "ioshelper.plugins.common.clang_blocks.model.byref_layout",
+        "ioshelper.plugins.common.clang_blocks.analyzer.scan",
+        "ioshelper.plugins.common.clang_blocks.analyzer.byref_args",
+        "ioshelper.plugins.common.clang_blocks.optimizer",
+        "ioshelper.plugins.common.clang_blocks.analyzer.options",
+        "ioshelper.plugins.common.clang_blocks.analyzer.renamer",
+        "ioshelper.plugins.common.clang_blocks.analyzer.pipeline",
         "ioshelper.plugins.swift.swift_types.swift_types",
         "ioshelper.plugins.swift.swift_types.prolog_rewrite",
         "ioshelper.plugins.swift.swift_oslog.log_hook",
@@ -113,9 +126,11 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
             __import__(modname)
 
     from ioshelper.base.config import Config, Feature
+    from ioshelper.plugins.common.clang_blocks.optimizer import objc_blocks_optimizer_hooks_t
     from ioshelper.plugins.dsc.stub_calls import STUB_CALLS_COMPONENT_NAME
     from ioshelper.plugins.dsc.stub_calls.optimizer import stub_call_optimizer_t
     from ioshelper.plugins.objc.objc_lvar_renamer import OBJC_LVAR_RENAMER_COMPONENT_NAME
+    from ioshelper.plugins.objc.objc_lvar_renamer.options import RenamerOptions
     from ioshelper.plugins.objc.objc_lvar_renamer.renamer import ObjcLvarRenameHook
     from ioshelper.plugins.objc.objc_msgsend_args import OBJC_MSGSEND_ARGCOUNT_COMPONENT_NAME
     from ioshelper.plugins.objc.objc_msgsend_args.optimizer import objc_msgsend_argcount_optimizer_t
@@ -130,6 +145,10 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
 
     # Re-read the config on every reload so a config edit doesn't need a restart.
     config = Config.load()
+
+    def make_objc_lvar_rename_hook() -> ObjcLvarRenameHook:
+        """The renamer hook with its name-source gates resolved, as its component does on load."""
+        return ObjcLvarRenameHook(RenamerOptions.load())
 
     def skip_reason(name: str, feature: Feature | None, *, experimental: bool = False) -> str | None:
         """
@@ -151,13 +170,17 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
     # objc-sugar's msgSend hook is listed before its selector hook so it fires after it
     # (match core.objc_plugins order). The objc-lvar-renamer maturity hook uses a different
     # event and is order-independent; its individual name sources are booleans in the
-    # config's [objc-lvar-renamer] section, resolved by the hook itself on instantiation.
+    # config's [objc-lvar-renamer] section, resolved by its factory above. The
+    # clang-blocks auto analyzer is GUI-only, so it's not here.
     hook_specs: list[tuple[str, Feature | None, bool, list]] = [
         ("swift-class-call", Feature.SWIFT, False, [SwiftClassCallHook]),
         ("swift-prolog-rewrite", Feature.SWIFT, False, [SwiftPrologRewriteHook]),
         ("swift-oslog", Feature.SWIFT, False, [SwiftLogRewriteHook]),
+        # A common component (no feature gate): collapses block field initializations
+        # into `_stack_block_init(...)`-style helper calls, like the GUI does.
+        ("clang-blocks-optimizer", None, False, [objc_blocks_optimizer_hooks_t]),
         ("objc-sugar", Feature.OBJC, False, [objc_msgsend_hexrays_hooks_t, objc_selector_hexrays_hooks_t]),
-        (OBJC_LVAR_RENAMER_COMPONENT_NAME, Feature.OBJC, False, [ObjcLvarRenameHook]),
+        (OBJC_LVAR_RENAMER_COMPONENT_NAME, Feature.OBJC, False, [make_objc_lvar_rename_hook]),
     ]
     for name, feature, experimental, hook_classes in hook_specs:
         reason = skip_reason(name, feature, experimental=experimental)
@@ -167,10 +190,13 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         for cls in hook_classes:
             try:
                 h = cls()
+                if h is None:
+                    print(f"[ipc] skipping hook component {name!r}: option-gated factory returned None")
+                    continue
                 h.hook()
                 _LIVE_HOOKS.append(h)
             except Exception as exc:
-                print(f"[ipc] install {cls.__name__}: {exc!r}")
+                print(f"[ipc] install {getattr(cls, '__name__', repr(cls))}: {exc!r}")
     # Microcode optimizers: headless `idat` doesn't auto-install the plugin's
     # `optinsn_t`/`optblock_t` optimizers, so instantiate the ones whose output the
     # probe needs to reflect. The DSC stub retargeting exposes the clean callee names
@@ -227,8 +253,8 @@ def _decompile(ea_raw, sections: list[str] | None = None, passes: int = 3) -> st
     Defaults to 3 passes — the maturity hook applies types during pass 1's
     decompile, the post-print invalidation fires after pass 2's storage,
     and pass 3 sees the fully-typed prototype in the rendered header.
-    `probe_func.sh` only does 1 cold decompile because each invocation is
-    standalone; here we get the GUI-equivalent multi-F5 behavior cheaply."""
+    This gets the GUI-equivalent multi-F5 behavior cheaply.
+    """
     ea = _coerce_ea(ea_raw)
     sections = sections or ["pseudo"]
     cfunc = None

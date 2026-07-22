@@ -218,7 +218,9 @@ def _install_ioshelper_hooks() -> None:
 
     try:
         from ioshelper.base.config import Config, Feature
+        from ioshelper.plugins.common.clang_blocks.optimizer import objc_blocks_optimizer_hooks_t
         from ioshelper.plugins.objc.objc_lvar_renamer import OBJC_LVAR_RENAMER_COMPONENT_NAME
+        from ioshelper.plugins.objc.objc_lvar_renamer.options import RenamerOptions
         from ioshelper.plugins.objc.objc_lvar_renamer.renamer import ObjcLvarRenameHook
         from ioshelper.plugins.swift.swift_oslog.log_hook import SwiftLogRewriteHook
         from ioshelper.plugins.swift.swift_types.prolog_rewrite import SwiftPrologRewriteHook
@@ -229,47 +231,64 @@ def _install_ioshelper_hooks() -> None:
 
     config = Config.load()
 
-    # Each spec is (component name, feature, experimental, hook class), mirroring the
+    def make_objc_lvar_rename_hook() -> ObjcLvarRenameHook:
+        """The renamer hook with its name-source gates resolved, as its component does on load."""
+        return ObjcLvarRenameHook(RenamerOptions.load())
+
+    # Each spec is (component name, feature, experimental, hook factory), mirroring the
     # component definitions in each feature's `__init__.py` so the config gates the
     # probe's installs by the same names as the GUI. The objc-lvar-renamer's individual
     # name sources are booleans in the config's [objc-lvar-renamer] section, resolved by
-    # the hook itself on instantiation.
+    # its factory above. The clang-blocks auto analyzer is GUI-only, so it's not here.
     hook_specs = [
         ("swift-class-call", Feature.SWIFT, False, SwiftClassCallHook),
         ("swift-prolog-rewrite", Feature.SWIFT, False, SwiftPrologRewriteHook),
         ("swift-oslog", Feature.SWIFT, False, SwiftLogRewriteHook),
-        (OBJC_LVAR_RENAMER_COMPONENT_NAME, Feature.OBJC, False, ObjcLvarRenameHook),
+        # A common component (no feature gate): collapses block field initializations
+        # into `_stack_block_init(...)`-style helper calls, like the GUI does.
+        ("clang-blocks-optimizer", None, False, objc_blocks_optimizer_hooks_t),
+        (OBJC_LVAR_RENAMER_COMPONENT_NAME, Feature.OBJC, False, make_objc_lvar_rename_hook),
     ]
-    for name, feature, experimental, cls in hook_specs:
-        reason = _component_skip_reason(config, name, feature, experimental=experimental)
-        if reason is not None:
-            print(f"[probe] skipping hook component {name!r}: {reason}")
-            continue
-        try:
-            h = cls()
-            ok = h.hook()
-            _LIVE_HOOKS.append(h)
-            print(f"[probe] installed {cls.__name__} hook ok={ok}")
-        except Exception as exc:
-            print(f"[probe] {cls.__name__} install failed: {exc!r}", file=sys.stderr)
+    for name, feature, experimental, hook_factory in hook_specs:
+        _install_one_hook(config, name, feature, experimental, hook_factory)
 
-    # Headless idat also skips the StartupScript components, so the one-shot
-    # IDB setup (`fix_swift_types`, the GUI's `swift-types` component) hasn't
-    # run. Invoke it once so the probe sees the same type system the user's
-    # real IDA does.
+    _run_swift_types_startup(config)
+    _install_ioshelper_optimizers(config)
+
+
+def _install_one_hook(config: "Config", name: str, feature, experimental: bool, hook_factory) -> None:
+    """Instantiate and hook one headless Hexrays hook, honoring config gates."""
+    reason = _component_skip_reason(config, name, feature, experimental=experimental)
+    if reason is not None:
+        print(f"[probe] skipping hook component {name!r}: {reason}")
+        return
+    try:
+        h = hook_factory()
+        if h is None:
+            print(f"[probe] skipping hook component {name!r}: option-gated factory returned None")
+            return
+        ok = h.hook()
+        _LIVE_HOOKS.append(h)
+        print(f"[probe] installed {type(h).__name__} hook ok={ok}")
+    except Exception as exc:
+        print(f"[probe] {hook_factory.__name__} install failed: {exc!r}", file=sys.stderr)
+
+
+def _run_swift_types_startup(config: "Config") -> None:
+    """Run the `swift-types` startup script that headless idat also skips."""
+    from ioshelper.base.config import Feature
+
     reason = _component_skip_reason(config, "swift-types", Feature.SWIFT)
     if reason is not None:
         print(f"[probe] skipping startup component 'swift-types': {reason}")
-    else:
-        try:
-            from ioshelper.plugins.swift.swift_types.swift_types import fix_swift_types
+        return
+    try:
+        from ioshelper.plugins.swift.swift_types.swift_types import fix_swift_types
 
-            fix_swift_types()
-            print("[probe] ran fix_swift_types()")
-        except Exception as exc:
-            print(f"[probe] fix_swift_types failed: {exc!r}", file=sys.stderr)
-
-    _install_ioshelper_optimizers(config)
+        fix_swift_types()
+        print("[probe] ran fix_swift_types()")
+    except Exception as exc:
+        print(f"[probe] fix_swift_types failed: {exc!r}", file=sys.stderr)
 
 
 def _install_ioshelper_optimizers(config: "Config") -> None:
@@ -319,6 +338,13 @@ def _install_ioshelper_optimizers(config: "Config") -> None:
                 print(f"[probe] {factory.__name__} install failed: {exc!r}", file=sys.stderr)
 
 
+def _decompile_target(ea: int):
+    """Fresh-decompile `ea`."""
+    with contextlib.suppress(Exception):
+        ida_hexrays.mark_cfunc_dirty(ea, False)
+    return ida_hexrays.decompile(ea)
+
+
 def main() -> None:
     ida_auto.auto_wait()
 
@@ -334,12 +360,7 @@ def main() -> None:
     # decompile we're about to do triggers them.
     _install_ioshelper_hooks()
 
-    # Force a fresh decompile — without this hex-rays may serve a cached cfunc
-    # from the IDB, which won't reflect any plugin changes we're trying to test.
-    with contextlib.suppress(Exception):
-        ida_hexrays.mark_cfunc_dirty(ea, False)
-
-    cfunc = ida_hexrays.decompile(ea)
+    cfunc = _decompile_target(ea)
     if cfunc is None:
         print(f"[probe] decompile({ea:#x}) failed", file=sys.stderr)
         idc.qexit(1)
