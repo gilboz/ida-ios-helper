@@ -10,6 +10,7 @@ import ida_typeinf
 import idaapi
 import idc
 from idahelper import file_format, memory, segments, tif
+from idahelper.ast.cfunc import mark_dirty
 
 # IDA 9.4 (SDK 940) introduced the `__swiftcall` calling convention + the
 # `__swiftself` argument attribute that we want to emit for Swift class
@@ -790,20 +791,6 @@ def _apply_swift_class_call_signature(func: ida_funcs.func_t) -> bool:
     return True
 
 
-def _mark_cfunc_dirty(func_ea: int) -> None:
-    """
-    Invalidate Hex-Rays cache for this function so UI pseudocode reflects updated prototype.
-    Some IDA versions expose mark_cfunc_dirty(ea, close_views) while others expose mark_cfunc_dirty(ea).
-    """
-    if not hasattr(ida_hexrays, "mark_cfunc_dirty"):
-        return
-
-    try:
-        ida_hexrays.mark_cfunc_dirty(func_ea, False)
-    except TypeError:
-        ida_hexrays.mark_cfunc_dirty(func_ea)
-
-
 def optimize_swift_class_call(func_ea: int) -> bool:
     func = ida_funcs.get_func(func_ea)
     if func is None:
@@ -825,7 +812,7 @@ class _FuncCreatedIDBHook(idaapi.IDB_Hooks):
     def func_added(self, func) -> int:
         try:
             if optimize_swift_class_call(func.start_ea):
-                _mark_cfunc_dirty(func.start_ea)
+                mark_dirty(func.start_ea)
         except Exception:  # noqa: S110
             pass
         return 0
@@ -861,7 +848,7 @@ class SwiftClassCallHook(ida_hexrays.Hexrays_Hooks):
 
         if optimize_swift_class_call(func_ea):
             print(f"[swift-types] Applied x20 class-call optimization to {func_ea:X}")
-            _mark_cfunc_dirty(func_ea)
+            mark_dirty(func_ea)
         return 0
 
     def func_printed(self, cfunc: ida_hexrays.cfunc_t) -> int:
@@ -886,7 +873,7 @@ class SwiftClassCallHook(ida_hexrays.Hexrays_Hooks):
             header = _il.tag_remove(sv[0].line) or ""
             if "__swiftself" in header or "__swiftClassCall" in header:
                 return 0
-            _mark_cfunc_dirty(ea)
+            mark_dirty(ea)
         except Exception:  # noqa: S110
             pass
         return 0

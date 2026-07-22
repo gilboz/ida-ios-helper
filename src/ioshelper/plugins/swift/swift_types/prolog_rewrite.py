@@ -29,6 +29,7 @@ import idaapi
 import idc
 from idahelper import naming
 from idahelper.ast import cexpr
+from idahelper.ast.cfunc import mark_dirty
 
 _TYPE_METADATA_ACCESSOR_PREFIX = "type metadata accessor for "
 
@@ -535,15 +536,6 @@ def _apply_buf_rewrites(cfunc: ida_hexrays.cfunc_t) -> int:  # noqa: C901
 _DYN_ALLOCA_NETNODE = "$ ioshelper.swift_dyn_alloca_frsize"
 
 
-def _mark_cfunc_dirty(ea: int) -> None:
-    if not hasattr(ida_hexrays, "mark_cfunc_dirty"):
-        return
-    try:
-        ida_hexrays.mark_cfunc_dirty(ea, False)
-    except TypeError:
-        ida_hexrays.mark_cfunc_dirty(ea)
-
-
 def _flush_cfunc(ea: int) -> None:
     """
     Invalidate the cached cfunc for `ea` so the next decompile rebuilds
@@ -551,7 +543,7 @@ def _flush_cfunc(ea: int) -> None:
     nukes the entire cfunc cache, and the next decompile re-triggers our
     hooks, which can flush again, cascading into a decompile loop on binaries
     with many closure-taking sites (e.g. searchpartyd)."""
-    _mark_cfunc_dirty(ea)
+    mark_dirty(ea)
 
 
 def _detect_swift_dynamic_alloca_size(func: ida_funcs.func_t) -> int:
@@ -717,7 +709,7 @@ def _record_closure_body_struct(body_ea: int, struct_name: str) -> None:
     func = ida_funcs.get_func(body_ea)
     if func is not None and (func.end_ea - func.start_ea) <= _TRAMPOLINE_MAX_BYTES:
         _apply_captures_arg_to_body(body_ea, struct_name)
-    _mark_cfunc_dirty(body_ea)
+    mark_dirty(body_ea)
 
 
 def _apply_captures_arg_to_body(body_ea: int, struct_name: str) -> bool:
@@ -969,7 +961,7 @@ class SwiftPrologRewriteHook(ida_hexrays.Hexrays_Hooks):
                 return 0
             func = ida_funcs.get_func(mba.entry_ea)
             if func is not None and _expand_frame_for_swift_dynamic_allocas(func):
-                _mark_cfunc_dirty(mba.entry_ea)
+                mark_dirty(mba.entry_ea)
         except Exception as exc:
             try:
                 ea = mba.entry_ea if mba else 0
@@ -986,12 +978,12 @@ class SwiftPrologRewriteHook(ida_hexrays.Hexrays_Hooks):
                 n = _type_swift_closure_ctx_lvars(cfunc)
                 if n:
                     print(f"[swift-prolog] typed {n} closure-ctx lvar(s) @ {cfunc.entry_ea:X}")
-                    _mark_cfunc_dirty(cfunc.entry_ea)
+                    mark_dirty(cfunc.entry_ea)
                 # If THIS cfunc is the body of a recorded closure call,
                 # retype its x20 lvar as the captures struct.
                 if _type_closure_body_x20_lvar(cfunc):
                     print(f"[swift-prolog] typed closure-body captures lvar @ {cfunc.entry_ea:X}")
-                    _mark_cfunc_dirty(cfunc.entry_ea)
+                    mark_dirty(cfunc.entry_ea)
             elif new_maturity == ida_hexrays.CMAT_FINAL:
                 _apply_buf_rewrites(cfunc)
                 _rename_swift_error_lvars(cfunc)
