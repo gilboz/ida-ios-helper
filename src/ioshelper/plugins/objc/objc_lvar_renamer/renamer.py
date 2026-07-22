@@ -9,13 +9,13 @@ import ida_hexrays
 from ida_hexrays import Hexrays_Hooks, cfunc_t, lvars_t
 from idahelper import memory, naming
 from idahelper.ast import lvars
-from idahelper.ast.lvars import VariableModification
+from idahelper.ast.lvars import VariableModification, is_default_name
 
 from ioshelper.base.config import config
+from ioshelper.base.log import debug
 
 from .args_source import collect_arg_candidates
 from .call_sources import collect_call_candidates
-from .heuristics import DEFAULT_LVAR_NAME
 from .options import OBJC_LVAR_RENAMER_COMPONENT_NAME, RenamerOptions
 
 
@@ -23,14 +23,17 @@ class ObjcLvarRenameHook(Hexrays_Hooks):
     """
     Run the renaming pipeline automatically on every decompilation, at `CMAT_FINAL`.
 
-    Instantiation resolves and logs the name-source gates; the component (or a headless
-    probe script) creates the hook when it loads, so a plugin hot-reload after a config
-    change picks the new gates up and logs them again.
+    The component (or a headless probe script) resolves the name-source gates and
+    creates the hook when it loads, so a plugin hot-reload after a config change
+    picks the new gates up and logs them again.
+
+    Args:
+        options: Configuration options that control which sources are used for suggesting new names for Objective-C local variables
     """
 
-    def __init__(self) -> None:
+    def __init__(self, options: RenamerOptions) -> None:
         super().__init__()
-        self._options = RenamerOptions.load()
+        self._options = options
         self._options.log()
 
     def maturity(self, cfunc: cfunc_t, new_maturity: int) -> int:
@@ -58,10 +61,9 @@ class ObjcLvarRenameHook(Hexrays_Hooks):
         func_lvars = decompiled.get_lvars()
         candidates, dropped = self._collect_candidates(decompiled, func_lvars)
         if not candidates:
-            if config.debug:
-                print(
-                    f"[Debug] {OBJC_LVAR_RENAMER_COMPONENT_NAME}: {memory.name_from_ea(decompiled.entry_ea)}: no rename candidates"
-                )
+            debug(
+                f"{OBJC_LVAR_RENAMER_COMPONENT_NAME}: {memory.name_from_ea(decompiled.entry_ea)}: no rename candidates"
+            )
             return False
 
         modifications = self._build_modifications(func_lvars, candidates)
@@ -85,7 +87,7 @@ class ObjcLvarRenameHook(Hexrays_Hooks):
         higher-priority source and whether the batch failed to write.
         """
         summary = ", ".join(f"{old} -> {mod.name} ({candidates[old][1]})" for old, mod in modifications.items())
-        line = f"[Debug] {OBJC_LVAR_RENAMER_COMPONENT_NAME}: {memory.name_from_ea(entry_ea)}: {summary}"
+        line = f"{OBJC_LVAR_RENAMER_COMPONENT_NAME}: {memory.name_from_ea(entry_ea)}: {summary}"
         if dropped:
             losers = ", ".join(
                 f"{var} -> {base} ({source}, lost to {candidates[var][1]})" for var, base, source in dropped
@@ -93,7 +95,7 @@ class ObjcLvarRenameHook(Hexrays_Hooks):
             line += f"; dropped: {losers}"
         if not renamed:
             line += " [nothing written]"
-        print(line)
+        debug(line)
 
     def _collect_candidates(
         self, decompiled: cfunc_t, func_lvars: lvars_t
@@ -141,7 +143,7 @@ class ObjcLvarRenameHook(Hexrays_Hooks):
         taken = {
             func_lvars[i].name
             for i in range(func_lvars.size())
-            if func_lvars[i].name and not DEFAULT_LVAR_NAME.match(func_lvars[i].name)
+            if func_lvars[i].name and not is_default_name(func_lvars[i].name)
         }
         modifications: dict[str, VariableModification] = {}
         for current, (base_name, _source) in candidates.items():

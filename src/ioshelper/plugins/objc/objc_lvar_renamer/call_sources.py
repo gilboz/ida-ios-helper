@@ -28,8 +28,9 @@ import ida_hexrays
 from ida_hexrays import cexpr_t, cfunc_t, ctree_items_t, ctree_visitor_t, lvars_t
 from idahelper import memory, objc
 from idahelper.ast import cexpr, citem
+from idahelper.ast.lvars import is_default_name
 
-from .heuristics import DEFAULT_LVAR_NAME, getter_name, guess_implicit_arg_name, to_snake_identifier
+from .heuristics import getter_name, guess_implicit_arg_name, to_snake_identifier
 
 
 def collect_call_candidates(
@@ -94,7 +95,7 @@ class _CallCandidateVisitor(ctree_visitor_t):
         if var_index >= self._func_lvars.size():
             return
         current = self._func_lvars[var_index].name
-        if current not in into and DEFAULT_LVAR_NAME.match(current):
+        if current not in into and is_default_name(current):
             into[current] = base_name
 
 

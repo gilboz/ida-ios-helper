@@ -7,7 +7,6 @@ getter shapes) from one place.
 """
 
 __all__ = [
-    "DEFAULT_LVAR_NAME",
     "getter_name",
     "guess_implicit_arg_name",
     "to_snake_identifier",
@@ -16,10 +15,6 @@ __all__ = [
 import re
 
 from idahelper import naming
-
-# Only hex-rays' default names (`a3` arguments, `v12` locals) are ever renamed -- never
-# stack slots (`_18`) or anything a user or an IDA heuristic already named.
-DEFAULT_LVAR_NAME = re.compile(r"^[av]\d+$")
 
 # The implicit argument follows one of these words: `initWithFrame:` -> `Frame`.
 _PREPOSITIONS = ("with", "for", "at", "from", "to", "of", "in", "by", "using")
