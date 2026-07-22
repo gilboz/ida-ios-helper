@@ -6,7 +6,11 @@ from idahelper import file_format, widgets
 
 from .base.config import Feature, config
 from .base.reloadable_plugin import ComponentFactory, PluginCore, UIAction, UIActionsComponent
-from .plugins.common.clang_blocks import clang_block_args_analyzer_component, clang_block_optimizer_component
+from .plugins.common.clang_blocks import (
+    clang_block_optimizer_component,
+    clang_blocks_analyzer_component,
+    clang_blocks_auto_analyzer_component,
+)
 from .plugins.common.globals import globals_component
 from .plugins.common.jump_to_string import jump_to_string_component
 from .plugins.common.outline import mark_outline_functions_component
@@ -105,7 +109,8 @@ def shared_modules() -> list[ComponentFactory]:
     modules = [
         this_arg_fixer_component,
         toggle_ios_helper_mount_component,
-        clang_block_args_analyzer_component,
+        clang_blocks_analyzer_component,
+        clang_blocks_auto_analyzer_component,
         clang_block_optimizer_component,
         jump_to_string_component,
         range_condition_optimizer_component,

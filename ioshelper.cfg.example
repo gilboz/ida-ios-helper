@@ -29,3 +29,12 @@ experimental_components = []
 # args = true          # the function's own selector names its arguments
 # getters = false      # a variable assigned from a getter is named after it (WIP)
 # callee-args = false  # a variable passed at a selector keyword position (WIP)
+
+# Which steps the "Analyze stack blocks" action (`clang-blocks-analyzer`) runs after
+# IDA's own stack-block analysis, and whether it also runs automatically on decompile.
+# [clang-blocks-analyzer]
+# auto = false          # run the analysis the first time a function using blocks is decompiled (GUI only)
+# byref-args = true     # recover __block byref argument structs
+# rename-fields = true  # name block capture fields after the variables assigned to them
+# retype-fields = true  # give block capture fields the type of the typed variables assigned to them
+# rename-blocks = true  # name block variables by kind (stack_block1, global_block1, byref_block1, ...)

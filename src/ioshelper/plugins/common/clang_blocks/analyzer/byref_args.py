@@ -17,42 +17,45 @@ from idahelper.ast.cexpr import getv
 from idahelper.ast.lvars import VariableModification
 from idahelper.microcode import mba, mblock, mop
 
-from .block import (
+from ..model.block_layout import (
     FLAG_BLOCK_HAS_COPY_DISPOSE,
     block_member_is_arg_field,
-    get_ida_block_lvars,
 )
-from .block_arg_byref import (
+from ..model.byref_layout import (
     BlockArgByRefField,
     create_block_arg_byref_type,
     is_block_arg_byref_type,
 )
-from .utils import StructFieldAssignment, get_struct_fields_assignments
+from ..model.field_assignments import StructFieldAssignment
+from .scan import BlocksScan
 
 
-def try_add_block_arg_byref_to_func(ea: int) -> bool:
-    func = cfunc.from_ea(ea)
-    if func is None:
-        print(f"Failed to decompile func at {ea:X}")
+def try_add_block_arg_byref_to_func(scan: BlocksScan) -> bool:
+    """
+    Recover `__block` byref argument structs from the scanned function.
+
+    Args:
+        scan: The function's block scan; must reflect the current decompilation.
+
+    Returns:
+        `True` if at least one byref struct was recovered and applied.
+    """
+    if not scan.block_lvars:
         return False
 
-    block_lvars = get_ida_block_lvars(func)
-    if not block_lvars:
-        return False
-
-    # Scan the cfunc for possible ref args for blocks
-    assignments = get_struct_fields_assignments(func, block_lvars)
     stack_off_to_its_assignment: dict[int, StructFieldAssignment] = {}  # stack_offset -> assignment
-    for lvar in block_lvars:
-        if lvar.name not in assignments:
+    for lvar in scan.block_lvars:
+        if lvar.name not in scan.field_assignments:
             print(f"[Error] Block variable {lvar.name} has no assignments")
             continue
-        stack_off_to_its_assignment.update(get_by_ref_args_for_block_candidates(assignments[lvar.name]))
+        stack_off_to_its_assignment.update(get_by_ref_args_for_block_candidates(scan.field_assignments[lvar.name]))
 
     if not stack_off_to_its_assignment:
         return False
 
-    # scan the microcode using the offsets to see if any of them is a start of a by ref arg struct.
+    func = scan.func
+
+    # Scan the microcode to see if any of the offsets is the start of a byref arg struct.
     lvar_modifications: dict[str, VariableModification] = {}  # lvar_name -> type_modification
     for result in ScanForRefArg(set(stack_off_to_its_assignment.keys())).scan(func.mba):
         new_type = create_block_arg_byref_type(result.initialization_ea, result.variable.size, result.has_helpers)
@@ -65,7 +68,6 @@ def try_add_block_arg_byref_to_func(ea: int) -> bool:
         set_new_type_for_member(assignment, tif.pointer_of(new_type))
 
     if lvar_modifications:
-        # Apply new types for the lvars
         if not lvars.perform_lvar_modifications_by_ea(func.entry_ea, lvar_modifications):
             print("[Error] Failed to modify lvars")
 
@@ -132,7 +134,6 @@ class ScanForRefArg:
         }
 
     def scan(self, func_mba: mba_t) -> list[ScanForBlockArgByRefState]:
-        # Clean state
         self._state = ScanForBlockArgByRefState.initial()
         self._results = []
 
@@ -142,18 +143,16 @@ class ScanForRefArg:
         return self._results
 
     def _on_instruction(self, insn: minsn_t) -> None:
-        # initialization of the block by reg arg is done using mov only.
+        # Initialization of the byref arg struct is done using `mov`s to stack variables only.
         if insn.opcode != ida_hexrays.m_mov:
             self._state = ScanForBlockArgByRefState.initial()
             return
 
-        # Check if the instruction is a mov to a stack variable
         offset = mop.get_stack_offset(insn.d)
         if offset is None:
             self._state = ScanForBlockArgByRefState.initial()
             return
 
-        # Check if the write offset is correct
         if self._state.initial_stack_offset is not None and offset != self._state.expected_offset():
             self._state = ScanForBlockArgByRefState.initial()
             return
@@ -164,12 +163,7 @@ class ScanForRefArg:
         self._state_handlers[self._state.current_field](insn.l, offset)
 
     def _isa(self, value: mop_t, offset: int) -> None:
-        if (
-            offset not in self._possible_stack_offsets
-            or value.size != 8
-            or value.t != ida_hexrays.mop_n
-            or value.unsigned_value() != 0
-        ):
+        if offset not in self._possible_stack_offsets or value.size != 8 or value.t != ida_hexrays.mop_n or value.unsigned_value() != 0:
             self._state = ScanForBlockArgByRefState.initial()
             return
 
@@ -204,7 +198,6 @@ class ScanForRefArg:
         else:
             flags = numeric_value & 0xFF_FF_FF_FF
             size = (numeric_value >> 32) & 0xFFFF
-            # Create new mop for size and flags
             self._state.flags = mop.from_const_value(flags, 4)
             self._state.size = mop.from_const_value(size, 4)
 
@@ -220,7 +213,6 @@ class ScanForRefArg:
             self._state = ScanForBlockArgByRefState.initial()
             return
 
-        # Check that value is a constant
         numeric_value = mop.get_const_int(value, is_signed=False)
         if numeric_value is None:
             self._state = ScanForBlockArgByRefState.initial()
@@ -228,7 +220,7 @@ class ScanForRefArg:
 
         self._state.size = value
 
-        # Flags cannot be none because we checked it before
+        # Flags cannot be None because the FLAGS handler already validated them.
         flags = mop.get_const_int(self._state.flags, is_signed=False)
         if flags & FLAG_BLOCK_HAS_COPY_DISPOSE:
             self._state.has_helpers = True
@@ -256,8 +248,6 @@ class ScanForRefArg:
     def _variable(self, value: mop_t, _offset: int) -> None:
         self._state.variable = value
         self._results.append(self._state)
-
-        # Reset the state
         self._state = ScanForBlockArgByRefState.initial()
 
 
@@ -269,20 +259,18 @@ def get_by_ref_args_for_block_candidates(assignments: list[StructFieldAssignment
     possible_stack_offsets = {}
     for assignment in assignments:
         stack_offset = -1
-        # Skip fields that are not args
         if not block_member_is_arg_field(assignment.member):
             continue
-        # Find assignments that are refs to the stack: "block.lvar2 = &v8" or, "block.lvar2 = v8" (and v8 is array type)
+        # Find assignments that are refs to the stack: "block.lvar2 = &v8" or "block.lvar2 = v8" (v8 an array).
         expr = cexpr.strip_casts(assignment.expr)
         # block.lvar2 = &v8
         if expr.op == ida_hexrays.cot_ref:
             refed_expr: cexpr_t = expr.x
             if refed_expr.op != ida_hexrays.cot_var:
                 continue
-            # Check if the variable is not already handled
+            # Skip variables a previous run already retyped.
             if is_block_arg_byref_type(getv(refed_expr.v).type()):
                 continue
-            # Return the stack offset of the variable
             stack_offset = getv(refed_expr.v).get_stkoff()
         # block.lvar2 = v8 (and v8 is array type)
         elif expr.op == ida_hexrays.cot_var:

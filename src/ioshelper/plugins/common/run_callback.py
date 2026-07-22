@@ -4,13 +4,14 @@ from collections.abc import Callable
 
 import idaapi
 from ida_funcs import func_t
-from idahelper import file_format
+from idahelper import file_format, objc
 
+from ioshelper.base.log import debug
 from ioshelper.base.reloadable_plugin import PluginCore
 
 from ..kernelcache.func_renamers import apply_global_rename, apply_pac
 from ..kernelcache.kalloc_type import apply_kalloc_types
-from .clang_blocks import run_objc_plugin_on_func, try_add_block_arg_byref_to_func
+from .clang_blocks import BlocksScan, try_add_block_arg_byref_to_func
 from .outline import mark_all_outline_functions
 
 RUN_GLOBAL_ANALYSIS = 1
@@ -21,7 +22,7 @@ NETNODE_NAME = "$ idaioshelper"
 def run_callback(_core: PluginCore) -> Callable[[int], None]:
     def run(value: int):
         # Here you can implement the logic that uses the core and the value
-        print(f"[Debug] iOS helper run({value})")
+        debug(f"iOS helper run({value})")
         if value == RUN_GLOBAL_ANALYSIS:
             run_global_analysis()
         elif value == RUN_LOCAL_ANALYSIS:
@@ -62,11 +63,15 @@ def run_local_analysis(func: func_t):
     print("[Info] Running local analysis...")
     # Implement local analysis logic here
     print("[Info] Use builtin Obj-C plugin to restore blocks")
-    run_objc_plugin_on_func(func.start_ea)
+    objc.analyze_stack_blocks(func.start_ea)
     print("[Info] Use builtin Obj-C plugin to restore blocks completed.")
 
     print("[Info] Try restore byref arguments in blocks")
-    try_add_block_arg_byref_to_func(func.start_ea)
+    scan = BlocksScan.from_ea(func.start_ea)
+    if scan is None:
+        print(f"[Error] Failed to decompile func at {func.start_ea:X}")
+    else:
+        try_add_block_arg_byref_to_func(scan)
     print("[Info] Try restore byref arguments in blocks completed.")
 
     print("[Info] Try use PAC to apply types to local variables and fields")

@@ -364,7 +364,7 @@ Always loaded:
 |---|---|:-:|:-:|
 | `this-arg-fixer` | Convert the first function argument to this/self | ✔ | |
 | `toggle-mount` | Toggle the plugin's optimizations on/off at runtime | ✔ | |
-| `clang-blocks-args` | Analyze stack-allocated Clang blocks and their `__block` arguments | ✔ | |
+| `clang-blocks-analyzer` | Analyze Clang blocks: manual action plus optional `auto` on decompile (see its options below) | ✔ | |
 | `clang-blocks-optimizer` | Optimize Clang blocks initialization in the decompiler | | |
 | `jump-to-string` | Jump to a function using a specific string | ✔ | |
 | `range-condition-optimizer` | Simplify range-check conditions in the decompiler | | |
@@ -372,6 +372,29 @@ Always loaded:
 | `segment-xrefs` | Show xrefs inside a segment | ✔ | |
 | `globals` | Expose helper functions in the IDA Python console | | |
 | `dump-pseudocode` | Dump annotated pseudocode to `/tmp/pseudocode.txt` and its ctree to `/tmp/ctree.txt` (debug mode only) | ✔ | |
+
+The steps of the `clang-blocks-analyzer` action are boolean options in the component's own
+`[clang-blocks-analyzer]` config section; IDA's builtin stack-block analysis always runs first.
+The `auto` option additionally runs the same pipeline (honoring the same step options)
+the first time a function that uses blocks is shown in a pseudocode view (GUI only).
+The view's initial text is always pre-analysis; a refresh shows the result.
+
+```toml
+[clang-blocks-analyzer]
+auto = false
+byref-args = true
+rename-fields = true
+retype-fields = true
+rename-blocks = true
+```
+
+| Option | Description | Default |
+|---|---|:-:|
+| `auto` | Run the analysis automatically the first time a function using blocks is decompiled | off |
+| `byref-args` | Recover `__block` byref argument structs | on |
+| `rename-fields` | Name block capture fields after the variables assigned to them (`block.lvar2 = connection` -> `block.connection`); a captured `self` / `implicit_arg` is named after its type instead | on |
+| `retype-fields` | Give block capture fields the type of the typed variables assigned to them | on |
+| `rename-blocks` | Name block variables by kind: `stack_block1`, `global_block1`, `byref_block1`, ... | on |
 
 Obj-C binaries, including dyld_shared_cache (`disabled_features = ["objc"]` skips them all):
 

@@ -1,12 +1,16 @@
 __all__ = [
     "FLAG_BLOCK_HAS_COPY_DISPOSE",
     "BlockBaseFieldsAssignments",
+    "block_init_helper_name",
+    "block_kind_from_init_helper",
     "block_member_is_arg_field",
     "get_block_type",
     "get_ida_block_lvars",
+    "get_isa",
     "is_block_type",
 ]
 
+import re
 from dataclasses import dataclass
 
 import ida_hexrays
@@ -17,9 +21,10 @@ from ida_hexrays import (
     lvar_t,
 )
 from ida_typeinf import tinfo_t, udm_t
+from idahelper import memory
 from idahelper.ast import cexpr
 
-from .utils import StructFieldAssignment
+from .field_assignments import StructFieldAssignment
 
 IDA_BLOCK_TYPE_NAME_PREFIX = "Block_layout_"
 IDA_BLOCK_TYPE_BASE_FIELD_NAMES = {
@@ -66,6 +71,57 @@ def get_block_type(isa: str) -> str:
     return BLOCK_TYPES.get(isa, "unknown")
 
 
+# The `clang-blocks-optimizer` hook collapses a block initialization into a helper call
+# named after the block kind: `_stack_block_init(...)`, `_global_block_init(...)`, or a
+# bare `_block_init(...)` (keeping the isa as an argument) when it could not be read.
+_BLOCK_INIT_HELPER = re.compile(r"^_(?:(\w+)_)?block_init$")
+
+
+def block_init_helper_name(kind: str | None) -> str:
+    """
+    Get the `clang-blocks-optimizer` init-helper name for a block of the given `kind`.
+
+    Args:
+        kind: The `get_block_type` result (`stack`, `global`, `unknown`, ...), or `None`
+            when the isa could not be read — which yields the bare `_block_init` that keeps
+            the isa as an explicit argument.
+
+    Returns:
+        The helper name, e.g. `_stack_block_init` or `_block_init`.
+    """
+    return "_block_init" if kind is None else f"_{kind}_block_init"
+
+
+def block_kind_from_init_helper(name: str) -> str | None:
+    """
+    Get the block kind encoded in a `_..._block_init` helper name, or `None`.
+
+    Args:
+        name: A helper-call name.
+
+    Returns:
+        The kind for a recognized `_{kind}_block_init` (e.g. `stack`), or `None` when
+        `name` is not such a helper or carries no usable kind (`_block_init`,
+        `_unknown_block_init`).
+    """
+    match = _BLOCK_INIT_HELPER.match(name)
+    if match is None:
+        return None
+    kind = match.group(1)
+    return kind if kind not in (None, "unknown") else None
+
+
+def get_isa(isa: cexpr_t) -> str | None:
+    """Get the isa name from the isa expression"""
+    if isa.op == ida_hexrays.cot_ref:
+        inner = isa.x
+        if inner.op == ida_hexrays.cot_obj:
+            return memory.name_from_ea(inner.obj_ea)
+    elif isa.op == ida_hexrays.cot_helper:
+        return isa.helper
+    return None
+
+
 @dataclass
 class BlockBaseFieldsAssignments:
     assignments: list[cinsn_t]
@@ -88,19 +144,11 @@ class BlockBaseFieldsAssignments:
 
     @staticmethod
     def initial() -> "BlockBaseFieldsAssignments":
-        return BlockBaseFieldsAssignments(
-            assignments=[], isa=None, flags=None, reserved=None, invoke=None, descriptor=None, type=None, ea=None
-        )
+        return BlockBaseFieldsAssignments(assignments=[], isa=None, flags=None, reserved=None, invoke=None, descriptor=None, type=None, ea=None)
 
     def is_completed(self) -> bool:
         """Check if all base fields have been assigned"""
-        return (
-            self.isa is not None
-            and self.flags is not None
-            and self.reserved is not None
-            and self.invoke is not None
-            and self.descriptor is not None
-        )
+        return self.isa is not None and self.flags is not None and self.reserved is not None and self.invoke is not None and self.descriptor is not None
 
     def add_assignment(self, assignment: StructFieldAssignment) -> bool:
         """Add an assignment to the list of assignments"""

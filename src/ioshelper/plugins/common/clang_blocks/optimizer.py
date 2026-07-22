@@ -1,11 +1,24 @@
+"""
+The `clang-blocks-optimizer` hexrays hook.
+
+At each decompilation it collapses the runs of block / byref-struct field-assignment
+statements into single `_..._block_init(...)` / `_byref_block_arg_init(...)` helper
+calls, so the pseudocode reads as one initialization per block.
+"""
+
 import ida_hexrays
 from ida_hexrays import Hexrays_Hooks, cexpr_t, cfuncptr_t, cinsn_t
-from idahelper import memory
 from idahelper.ast import cexpr, cinsn, citem
 
-from .block import BlockBaseFieldsAssignments, get_block_type, get_ida_block_lvars
-from .block_arg_byref import BlockByRefArgBaseFieldsAssignments, get_block_byref_args_lvars
-from .utils import StructFieldAssignment, get_struct_fields_assignments
+from .model.block_layout import (
+    BlockBaseFieldsAssignments,
+    block_init_helper_name,
+    get_block_type,
+    get_ida_block_lvars,
+    get_isa,
+)
+from .model.byref_layout import BlockByRefArgBaseFieldsAssignments, get_block_byref_args_lvars
+from .model.field_assignments import StructFieldAssignment, get_struct_fields_assignments
 
 
 class objc_blocks_optimizer_hooks_t(Hexrays_Hooks):
@@ -35,7 +48,6 @@ def replace_first_and_cleanup(assignments: list[cinsn_t], new_insn: cinsn_t) -> 
 
 # region byref args
 def optimize_block_byref_args(func: cfuncptr_t) -> bool:
-    # Check if the function has blocks
     byref_lvars = get_block_byref_args_lvars(func)
     if not byref_lvars:
         return False
@@ -91,7 +103,6 @@ def create_byref_init_insn(lvar: str, func: cfuncptr_t, byref_fields: BlockByRef
 
 # region blocks
 def optimize_blocks(func: cfuncptr_t) -> bool:
-    # Check if the function has blocks
     block_lvars = get_ida_block_lvars(func)
     if not block_lvars:
         return False
@@ -120,7 +131,7 @@ def optimize_block(lvar: str, func: cfuncptr_t, assignments: list[StructFieldAss
 def create_block_init_insn(lvar: str, func: cfuncptr_t, block_fields: BlockBaseFieldsAssignments) -> cinsn_t:
     if (isa := get_isa(block_fields.isa)) is not None:
         call = cexpr.call_helper_from_sig(
-            f"_{get_block_type(isa)}_block_init",
+            block_init_helper_name(get_block_type(isa)),
             block_fields.type,
             [
                 cexpr_t(block_fields.flags),
@@ -130,7 +141,7 @@ def create_block_init_insn(lvar: str, func: cfuncptr_t, block_fields: BlockBaseF
         )
     else:
         call = cexpr.call_helper_from_sig(
-            "_block_init",
+            block_init_helper_name(None),
             block_fields.type,
             [
                 cexpr_t(block_fields.isa),
@@ -143,17 +154,6 @@ def create_block_init_insn(lvar: str, func: cfuncptr_t, block_fields: BlockBaseF
     lvar_exp = cexpr.from_var_name(lvar, func)
 
     return cinsn.from_expr(cexpr.from_assignment(lvar_exp, call), ea=block_fields.ea)
-
-
-def get_isa(isa: cexpr_t) -> str | None:
-    """Get the isa name from the isa expression"""
-    if isa.op == ida_hexrays.cot_ref:
-        inner = isa.x
-        if inner.op == ida_hexrays.cot_obj:
-            return memory.name_from_ea(inner.obj_ea)
-    elif isa.op == ida_hexrays.cot_helper:
-        return isa.helper
-    return None
 
 
 # endregion

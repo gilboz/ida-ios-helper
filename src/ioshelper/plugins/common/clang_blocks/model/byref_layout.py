@@ -15,7 +15,7 @@ from ida_typeinf import tinfo_t
 from idahelper import tif
 from idahelper.ast import cexpr
 
-from .utils import StructFieldAssignment
+from .field_assignments import StructFieldAssignment
 
 PTR_SIZE = 8
 INT_SIZE = 4
