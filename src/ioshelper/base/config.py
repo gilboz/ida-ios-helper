@@ -211,16 +211,20 @@ class ComponentOptions:
 
     `load()` reads the section from the `config` singleton and validates it against the
     declared fields, warning — prefixed with the section name — about unknown keys and
-    wrong-typed values (which fall back to the field's default). Load the options when
-    the component loads, so a config mistake is reported once, at load time, not on
-    every use.
+    wrong-typed values (which fall back to the field's default). It is memoized per
+    config generation: repeated `load()`s return the same instance and validate (and
+    warn) only once, until the `config` singleton is re-parsed (on a hot reload), which
+    invalidates the memo. So several components can each `load()` their shared section
+    without re-parsing or double-warning, and need not know they are related.
     """
 
     _section: ClassVar[str]
+    _cache: ClassVar[tuple[Config, "ComponentOptions"] | None] = None
 
     def __init_subclass__(cls, *, section: str, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         cls._section = section
+        cls._cache = None
 
     @classmethod
     def load(cls) -> Self:
@@ -230,7 +234,17 @@ class ComponentOptions:
         Returns:
             The options instance: declared defaults overlaid with the section's valid
             values. Unknown keys and wrong-typed values are warned about and skipped.
+            Memoized per config generation (see the class docstring).
         """
+        cached = cls.__dict__.get("_cache")
+        if cached is not None and cached[0] is config:
+            return typing.cast("Self", cached[1])
+        instance = cls._load_uncached()
+        cls._cache = (config, instance)
+        return instance
+
+    @classmethod
+    def _load_uncached(cls) -> Self:
         raw = config.options_for(cls._section)
         hints = typing.get_type_hints(cls)
         fields_by_key = {f.name.replace("_", "-"): f for f in dataclasses.fields(cls)}
