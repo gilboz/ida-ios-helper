@@ -7,7 +7,7 @@ import contextlib
 import dataclasses
 import sys
 from collections.abc import Callable
-from typing import Protocol
+from typing import Generic, Protocol, TypeVar, cast, overload
 
 import ida_hexrays
 import ida_idaapi
@@ -17,7 +17,9 @@ from ida_idaapi import plugin_t
 from ida_kernwin import UI_Hooks, action_desc_t
 from idahelper import runtime
 
-from .config import config
+from .config import ComponentOptions, config
+
+OptionsT = TypeVar("OptionsT", bound=ComponentOptions)
 
 
 class Component:
@@ -35,12 +37,11 @@ class Component:
             components are skipped entirely when running headless (idalib/idat).
     """
 
-    ui_only: bool = False
-
-    def __init__(self, name: str, description: str, core: "PluginCore"):
+    def __init__(self, name: str, description: str, core: "PluginCore", *, ui_only: bool = False):
         self.name = name
         self.description = description
         self.core = core
+        self.ui_only = ui_only
 
     def load(self) -> bool:
         """Load the component and all the relevant resources"""
@@ -333,20 +334,45 @@ class UIActionsComponentUIHooks(idaapi.UI_Hooks):
 
 
 # Another common type of component is installing ui actions. This is a helper class to make it easier.
-class UIActionsComponent(Component):
-    # Menu actions and popup hooks have no meaning without a UI.
-    ui_only = True
+class UIActionsComponent(Component, Generic[OptionsT]):
+    """
+    A component registering menu actions / hotkeys.
+
+    Args:
+        name: Short identifier (slug) used in the config file and load/mount logs.
+        description: Human-readable summary of what the component does.
+        core: The plugin core that owns this component.
+        action_factories: The factories building the actions, called once at load
+            time. Without an `options` schema each factory takes the core; with one,
+            each factory also receives the resolved options.
+        options: The component's `ComponentOptions` schema, resolved once at load
+            time and passed to every action factory.
+    """
 
     def __init__(
-        self, name: str, description: str, core: PluginCore, action_factories: list[Callable[[PluginCore], UIAction]]
+        self,
+        name: str,
+        description: str,
+        core: PluginCore,
+        action_factories: list[Callable[[PluginCore], UIAction]] | list[Callable[[PluginCore, OptionsT], UIAction]],
+        *,
+        options: type[OptionsT] | None = None,
     ):
-        super().__init__(name, description, core)
+        # Menu actions and popup hooks have no meaning without a UI.
+        super().__init__(name, description, core, ui_only=True)
         self._action_factories = action_factories
         self._actions: list[UIAction] | None = None
         self._ui_hooks: UI_Hooks | None = None
+        self._options_schema = options
 
     def load(self) -> bool:
-        self._actions = [factory(self.core) for factory in self._action_factories]
+        if self._options_schema is None:
+            factories = cast("list[Callable[[PluginCore], UIAction]]", self._action_factories)
+            self._actions = [factory(self.core) for factory in factories]
+        else:
+            options = self._options_schema.load()
+            factories = cast("list[Callable[[PluginCore, OptionsT], UIAction]]", self._action_factories)
+            self._actions = [factory(self.core, options) for factory in factories]
         if any(action.dynamic_menu_add is not None for action in self._actions):
             # Create a UI_Hooks instance to attach the dynamic menu
             self._ui_hooks = UIActionsComponentUIHooks(self._actions)
@@ -376,28 +402,76 @@ class UIActionsComponent(Component):
         if self._ui_hooks is not None:
             self._ui_hooks.unhook()
 
+    @overload
     @staticmethod
     def factory(
         name: str, description: str, action_factories: list[Callable[[PluginCore], UIAction]]
+    ) -> ComponentFactory: ...
+
+    @overload
+    @staticmethod
+    def factory(
+        name: str,
+        description: str,
+        action_factories: list[Callable[[PluginCore, OptionsT], UIAction]],
+        *,
+        options: type[OptionsT],
+    ) -> ComponentFactory: ...
+
+    @staticmethod
+    def factory(
+        name: str,
+        description: str,
+        action_factories: list[Callable[[PluginCore], UIAction]] | list[Callable[[PluginCore, OptionsT], UIAction]],
+        *,
+        options: type[OptionsT] | None = None,
     ) -> ComponentFactory:
-        return lambda core: UIActionsComponent(name, description, core, action_factories)
+        return lambda core: UIActionsComponent(name, description, core, action_factories, options=options)
 
 
 # A common type of component is installing hooks for the decompiler. This is a helper class to make it easier.
-class HexraysHookComponent(Component):
+class HexraysHookComponent(Component, Generic[OptionsT]):
+    """
+    A component installing `Hexrays_Hooks` on mount.
+
+    Args:
+        name: Short identifier (slug) used in the config file and load/mount logs.
+        description: Human-readable summary of what the component does.
+        core: The plugin core that owns this component.
+        hook_factories: The factories building the hooks, called once at load time.
+            Without an `options` schema each factory takes no arguments; with one,
+            each factory receives the resolved options and may return `None` to opt
+            its hook out (e.g. when an option disables it).
+        ui_only: Whether the hooks only listen to the pseudocode-view events, which
+            never fire headless; such a component is skipped when running headlessly.
+        options: The component's `ComponentOptions` schema, resolved once at load
+            time and passed to every hook factory.
+    """
+
     def __init__(
         self,
         name: str,
         description: str,
         core: PluginCore,
-        hook_factories: list[Callable[[], ida_hexrays.Hexrays_Hooks]],
+        hook_factories: list[Callable[[], ida_hexrays.Hexrays_Hooks]]
+        | list[Callable[[OptionsT], ida_hexrays.Hexrays_Hooks | None]],
+        *,
+        ui_only: bool = False,
+        options: type[OptionsT] | None = None,
     ):
-        super().__init__(name, description, core)
+        super().__init__(name, description, core, ui_only=ui_only)
         self._hook_factories = hook_factories
         self._hooks: list[ida_hexrays.Hexrays_Hooks] | None = None
+        self._options_schema = options
 
     def load(self):
-        self._hooks = [hook_factory() for hook_factory in self._hook_factories]
+        if self._options_schema is None:
+            factories = cast("list[Callable[[], ida_hexrays.Hexrays_Hooks]]", self._hook_factories)
+            self._hooks = [factory() for factory in factories]
+        else:
+            options = self._options_schema.load()
+            factories = cast("list[Callable[[OptionsT], ida_hexrays.Hexrays_Hooks | None]]", self._hook_factories)
+            self._hooks = [hook for factory in factories if (hook := factory(options)) is not None]
         return True
 
     def mount(self) -> bool:
@@ -414,11 +488,40 @@ class HexraysHookComponent(Component):
     def unload(self):
         self._hooks = None
 
+    @overload
     @staticmethod
     def factory(
-        name: str, description: str, hook_factories: list[Callable[[], ida_hexrays.Hexrays_Hooks]]
+        name: str,
+        description: str,
+        hook_factories: list[Callable[[], ida_hexrays.Hexrays_Hooks]],
+        *,
+        ui_only: bool = False,
+    ) -> ComponentFactory: ...
+
+    @overload
+    @staticmethod
+    def factory(
+        name: str,
+        description: str,
+        hook_factories: list[Callable[[OptionsT], ida_hexrays.Hexrays_Hooks | None]],
+        *,
+        ui_only: bool = False,
+        options: type[OptionsT],
+    ) -> ComponentFactory: ...
+
+    @staticmethod
+    def factory(
+        name: str,
+        description: str,
+        hook_factories: list[Callable[[], ida_hexrays.Hexrays_Hooks]]
+        | list[Callable[[OptionsT], ida_hexrays.Hexrays_Hooks | None]],
+        *,
+        ui_only: bool = False,
+        options: type[OptionsT] | None = None,
     ) -> ComponentFactory:
-        return lambda core: HexraysHookComponent(name, description, core, hook_factories)
+        return lambda core: HexraysHookComponent(
+            name, description, core, hook_factories, ui_only=ui_only, options=options
+        )
 
 
 class StartupScriptComponent(Component):
@@ -431,11 +534,10 @@ class StartupScriptComponent(Component):
         *,
         ui_only: bool = False,
     ):
-        super().__init__(name, description, core)
-        self._callbacks = callbacks
         # A callback that only makes sense with a UI (e.g. it prompts the user) sets this so
         # it is skipped when mounting headlessly, like the ui-action components.
-        self.ui_only = ui_only
+        super().__init__(name, description, core, ui_only=ui_only)
+        self._callbacks = callbacks
 
     def load(self):
         return True
