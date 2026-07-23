@@ -82,20 +82,25 @@ class ObjcLvarRenameHook(Hexrays_Hooks):
         renamed: bool,
     ) -> None:
         """
-        Print one debug line for the decompilation: the applied renames, each with the
-        source it came from, plus the proposals that lost their variable to a
-        higher-priority source and whether the batch failed to write.
+        Print the decompilation's renames one per line, grouped by the source each name
+        came from, plus the proposals that lost their variable to a higher-priority
+        source and whether the batch failed to write.
         """
-        summary = ", ".join(f"{old} -> {mod.name} ({candidates[old][1]})" for old, mod in modifications.items())
-        line = f"{OBJC_LVAR_RENAMER_COMPONENT_NAME}: {memory.name_from_ea(entry_ea)}: {summary}"
-        if dropped:
-            losers = ", ".join(
-                f"{var} -> {base} ({source}, lost to {candidates[var][1]})" for var, base, source in dropped
-            )
-            line += f"; dropped: {losers}"
+        header = f"{OBJC_LVAR_RENAMER_COMPONENT_NAME}: {memory.name_from_ea(entry_ea)}:"
         if not renamed:
-            line += " [nothing written]"
-        debug(line)
+            header += " [nothing written]"
+        debug(header)
+        by_source: dict[str, list[str]] = {}
+        for old, mod in modifications.items():
+            by_source.setdefault(candidates[old][1], []).append(f"{old} -> {mod.name}")
+        for source, renames in by_source.items():
+            debug(f"  {source}:")
+            for rename in renames:
+                debug(f"    {rename}")
+        if dropped:
+            debug("  dropped:")
+            for var, base, source in dropped:
+                debug(f"    {var} -> {base} ({source}, lost to {candidates[var][1]})")
 
     def _collect_candidates(
         self, decompiled: cfunc_t, func_lvars: lvars_t
