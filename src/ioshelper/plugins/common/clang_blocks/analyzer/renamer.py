@@ -59,12 +59,16 @@ def rename_blocks_in_func(scan: BlocksScan, options: BlocksAnalyzerOptions) -> b
     Returns:
         `True` if at least one field or variable was modified.
     """
+    func = scan.func
     blocks = _BlockVar.collect(scan)
     if not blocks:
+        debug(f"{CLANG_BLOCKS_ANALYZER_COMPONENT_NAME}: {func.entry_ea:#x}: no block variables")
         return False
+    debug(f"{CLANG_BLOCKS_ANALYZER_COMPONENT_NAME}: {func.entry_ea:#x}: {len(blocks)} block variable(s): {', '.join(f'{block.lvar.name} ({block.kind})' for block in blocks)}")
 
-    func = scan.func
     planned = _plan_block_names(func, blocks) if options.rename_blocks else {}
+    if planned:
+        debug(f"{CLANG_BLOCKS_ANALYZER_COMPONENT_NAME}: planned block renames: " + ", ".join(f"{current} -> {modification.name}" for current, modification in planned.items()))
 
     changed = False
     if options.rename_fields or options.retype_fields:
