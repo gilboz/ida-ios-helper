@@ -35,6 +35,6 @@ experimental_components = []
 # [clang-blocks-analyzer]
 # auto = false          # run the analysis the first time a function using blocks is decompiled (GUI only)
 # byref-args = true     # recover __block byref argument structs
-# rename-fields = true  # name block capture fields after the variables assigned to them
-# retype-fields = true  # give block capture fields the type of the typed variables assigned to them
+# rename-fields = true  # name block capture fields after the variables or struct fields assigned to them
+# retype-fields = true  # give block capture fields the type of the typed variables or struct fields assigned to them
 # rename-blocks = true  # name block variables by kind (stack_block1, global_block1, byref_block1, ...)

@@ -392,8 +392,8 @@ rename-blocks = true
 |---|---|:-:|
 | `auto` | Run the analysis automatically the first time a function using blocks is decompiled | off |
 | `byref-args` | Recover `__block` byref argument structs | on |
-| `rename-fields` | Name block capture fields after the variables assigned to them (`block.lvar2 = connection` -> `block.connection`); a captured `self` / `implicit_arg` is named after its type instead | on |
-| `retype-fields` | Give block capture fields the type of the typed variables assigned to them | on |
+| `rename-fields` | Name block capture fields after the variables (`block.lvar2 = connection` -> `block.connection`) or struct fields (`block.lvar4 = v->topic` -> `block.topic`) assigned to them; a captured `self` / `implicit_arg` is named after its type instead | on |
+| `retype-fields` | Give block capture fields the type of the typed variables or struct fields assigned to them | on |
 | `rename-blocks` | Name block variables by kind: `stack_block1`, `global_block1`, `byref_block1`, ... | on |
 
 Obj-C binaries, including dyld_shared_cache (`disabled_features = ["objc"]` skips them all):

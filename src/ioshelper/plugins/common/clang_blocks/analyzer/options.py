@@ -24,9 +24,9 @@ class BlocksAnalyzerOptions(ComponentOptions, section=CLANG_BLOCKS_ANALYZER_COMP
             decompile's text is pre-analysis; a second decompile shows the result.
         byref_args: Whether the `__block` byref argument structs are recovered.
         rename_fields: Whether block capture fields are renamed after the variables
-            assigned to them.
+            or struct fields assigned to them.
         retype_fields: Whether block capture fields take the type of the typed
-            variables assigned to them.
+            variables or struct fields assigned to them.
         rename_blocks: Whether default-named block variables get kind-based names
             (`stack_block1`, `global_block1`, `byref_block1`, ...).
     """
