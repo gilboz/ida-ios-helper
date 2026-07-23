@@ -23,8 +23,7 @@ from ida_hexrays import (
 from ida_typeinf import tinfo_t, udm_t
 from idahelper import memory
 from idahelper.ast import cexpr
-
-from .field_assignments import StructFieldAssignment
+from idahelper.ast.struct_assignments import StructFieldAssignment
 
 IDA_BLOCK_TYPE_NAME_PREFIX = "Block_layout_"
 IDA_BLOCK_TYPE_BASE_FIELD_NAMES = {

@@ -14,9 +14,9 @@ import ida_hexrays
 from ida_hexrays import cexpr_t, cfuncptr_t, lvar_t
 from idahelper.ast import cfunc
 from idahelper.ast.cexpr import getv
+from idahelper.ast.struct_assignments import LvarFieldsAssignmentsCollector, StructFieldAssignment
 
 from ..model.block_layout import get_ida_block_lvars
-from ..model.field_assignments import LvarFieldsAssignmentsCollector, StructFieldAssignment
 
 
 class _ScanCollector(LvarFieldsAssignmentsCollector):

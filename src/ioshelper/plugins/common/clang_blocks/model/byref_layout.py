@@ -14,8 +14,7 @@ from ida_hexrays import cexpr_t, cfunc_t, cinsn_t, lvar_t
 from ida_typeinf import tinfo_t
 from idahelper import tif
 from idahelper.ast import cexpr
-
-from .field_assignments import StructFieldAssignment
+from idahelper.ast.struct_assignments import StructFieldAssignment
 
 PTR_SIZE = 8
 INT_SIZE = 4

@@ -75,11 +75,11 @@ def _install_hooks_and_setup() -> None:  # noqa: C901
         # `ast.cexpr` imports `ast.lvars`, so lvars reloads first.
         "idahelper.ast.lvars",
         "idahelper.ast.cexpr",
+        "idahelper.ast.struct_assignments",
         # Re-runs `Config.load()`, refreshing the `config` singleton the lvar renamer's
         # per-source gating reads — reloaded before its consumers so they rebind it fresh.
         "ioshelper.base.config",
         # The clang-blocks feature's modules, in dependency order.
-        "ioshelper.plugins.common.clang_blocks.model.field_assignments",
         "ioshelper.plugins.common.clang_blocks.model.block_layout",
         "ioshelper.plugins.common.clang_blocks.model.byref_layout",
         "ioshelper.plugins.common.clang_blocks.analyzer.scan",

@@ -15,6 +15,7 @@ from idahelper import tif
 from idahelper.ast import cexpr, cfunc, lvars
 from idahelper.ast.cexpr import getv
 from idahelper.ast.lvars import VariableModification
+from idahelper.ast.struct_assignments import StructFieldAssignment
 from idahelper.microcode import mba, mblock, mop
 
 from ..model.block_layout import (
@@ -26,7 +27,6 @@ from ..model.byref_layout import (
     create_block_arg_byref_type,
     is_block_arg_byref_type,
 )
-from ..model.field_assignments import StructFieldAssignment
 from .scan import BlocksScan
 
 

@@ -9,6 +9,7 @@ calls, so the pseudocode reads as one initialization per block.
 import ida_hexrays
 from ida_hexrays import Hexrays_Hooks, cexpr_t, cfuncptr_t, cinsn_t
 from idahelper.ast import cexpr, cinsn, citem
+from idahelper.ast.struct_assignments import StructFieldAssignment, get_struct_fields_assignments
 
 from .model.block_layout import (
     BlockBaseFieldsAssignments,
@@ -18,7 +19,6 @@ from .model.block_layout import (
     get_isa,
 )
 from .model.byref_layout import BlockByRefArgBaseFieldsAssignments, get_block_byref_args_lvars
-from .model.field_assignments import StructFieldAssignment, get_struct_fields_assignments
 
 
 class objc_blocks_optimizer_hooks_t(Hexrays_Hooks):
