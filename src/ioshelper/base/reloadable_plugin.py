@@ -7,6 +7,7 @@ import contextlib
 import dataclasses
 import sys
 from collections.abc import Callable
+from datetime import datetime
 from typing import Generic, Protocol, TypeVar, cast, overload
 
 import ida_hexrays
@@ -262,7 +263,7 @@ class PluginReloadActionHandler(ida_kernwin.action_handler_t):
 
     def activate(self, ctx):
         self.plugin.reload()
-        print("Reloaded plugin!")
+        print(f"Reloaded plugin! ({datetime.now():%H:%M:%S})")
         return 1
 
     def update(self, ctx) -> int:
