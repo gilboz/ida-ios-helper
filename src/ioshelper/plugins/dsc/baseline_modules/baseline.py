@@ -97,7 +97,7 @@ def _load_and_refresh(dsc: Dsc, modules: list[tuple[str, int]]) -> None:
 
     loaded = [name for name, index in modules if dsc.load_image(index)]
     if not loaded:
-        print("[iOSHelper] no baseline modules could be loaded")
+        print("[ios-helper] no baseline modules could be loaded")
         return
 
     ida_auto.auto_wait()
@@ -105,4 +105,4 @@ def _load_and_refresh(dsc: Dsc, modules: list[tuple[str, int]]) -> None:
     DscStubCache.refresh()
     ida_hexrays.clear_cached_cfuncs()
     ida_kernwin.refresh_idaview_anyway()
-    print(f"[iOSHelper] loaded {len(loaded)} baseline module(s); re-decompile to see resolved calls")
+    print(f"[ios-helper] loaded {len(loaded)} baseline module(s); re-decompile to see resolved calls")

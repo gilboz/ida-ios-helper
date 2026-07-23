@@ -26,19 +26,19 @@ def report_modules_to_load(ea: int) -> None:
     """
     func_ea = functions.get_start_of_function(ea)
     if func_ea is None:
-        print("[iOSHelper] no function under cursor")
+        print("[ios-helper] no function under cursor")
         return
     func_name = functions.get_func_name(func_ea) or f"sub_{func_ea:X}"
 
     try:
         from idahelper.dscu import Dsc
     except ImportError:
-        print("[iOSHelper] reporting stub modules requires IDA 9.4+ (the dscu service is unavailable)")
+        print("[ios-helper] reporting stub modules requires IDA 9.4+ (the dscu service is unavailable)")
         return
 
     dsc = Dsc.get()
     if dsc is None:
-        print("[iOSHelper] current database is not a dyld_shared_cache")
+        print("[ios-helper] current database is not a dyld_shared_cache")
         return
 
     modules: dict[str, int] = defaultdict(int)
@@ -92,11 +92,11 @@ def _print_report(func_name: str, modules: dict[str, int], unresolved: int) -> N
     """
     if not modules:
         suffix = f" ({unresolved} could not be resolved from assembly)" if unresolved else ""
-        print(f"[iOSHelper] {func_name}: all stub calls already resolve{suffix}")
+        print(f"[ios-helper] {func_name}: all stub calls already resolve{suffix}")
         return
 
     stub_count = sum(modules.values())
-    print(f"[iOSHelper] {func_name}: {stub_count} stub call(s) reach {len(modules)} unloaded module(s):")
+    print(f"[ios-helper] {func_name}: {stub_count} stub call(s) reach {len(modules)} unloaded module(s):")
     for name, count in sorted(modules.items(), key=lambda item: (-item[1], item[0])):
         print(f"    {name}  ({count} stub{'s' if count != 1 else ''})")
     if unresolved:

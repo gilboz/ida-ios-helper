@@ -140,7 +140,7 @@ class Config:
             with path.open("rb") as f:
                 data = tomllib.load(f)
         except (OSError, tomllib.TOMLDecodeError) as e:
-            print(f"[iOSHelper] failed to read config at {path}: {e}. Using defaults.")
+            print(f"[ios-helper] failed to read config at {path}: {e}. Using defaults.")
             return cls()
 
         return cls(
@@ -166,7 +166,7 @@ def _string_list(data: dict[str, Any], key: str) -> list[str]:
     """
     value = data.get(key, [])
     if not isinstance(value, list):
-        print(f"[iOSHelper] config: '{key}' must be an array of strings; ignoring it.")
+        print(f"[ios-helper] config: '{key}' must be an array of strings; ignoring it.")
         return []
     return [str(item) for item in value]
 
@@ -187,7 +187,7 @@ def _parse_features(names: list[str]) -> frozenset[Feature]:
             features.add(Feature(name))
         except ValueError:
             known = ", ".join(feature.value for feature in Feature)
-            print(f"[iOSHelper] config: unknown feature {name!r}; ignoring it. Known features: {known}.")
+            print(f"[ios-helper] config: unknown feature {name!r}; ignoring it. Known features: {known}.")
     return frozenset(features)
 
 

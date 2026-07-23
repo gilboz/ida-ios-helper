@@ -86,9 +86,9 @@ def organize_functions(*, only_root: bool = True) -> OrganizeStats:
     func_dir: dirtree_t = ida_dirtree.get_std_dirtree(ida_dirtree.DIRTREE_FUNCS)
     func_dir.chdir("/")
     dsc = _get_dsc()
-    print(f"[iOSHelper] organizing functions into folders ({'new functions only' if only_root else 'full pass'})")
+    print(f"[ios-helper] organizing functions into folders ({'new functions only' if only_root else 'full pass'})")
     if dsc is None:
-        print("[iOSHelper] dscu service unavailable (IDA < 9.4): treating every module section as loaded")
+        print("[ios-helper] dscu service unavailable (IDA < 9.4): treating every module section as loaded")
 
     stats = OrganizeStats()
     created_folders: set[str] = set()
@@ -111,7 +111,7 @@ def organize_functions(*, only_root: bool = True) -> OrganizeStats:
     if not only_root:
         removed = _remove_empty_folders(func_dir)
         if removed:
-            print(f"[iOSHelper] removed {removed} empty function folder(s)")
+            print(f"[ios-helper] removed {removed} empty function folder(s)")
         _warn_if_root_not_empty(func_dir)
     return stats
 
@@ -176,7 +176,7 @@ def _make_folder(func_dir: dirtree_t, path: str) -> None:
         current = f"{current}/{part}" if current else part
         err = func_dir.mkdir(current)
         if err not in (ida_dirtree.DTE_OK, ida_dirtree.DTE_ALREADY_EXISTS):
-            print(f"[iOSHelper] failed to create functions folder {current!r}: {dirtree_t.errstr(err)}")
+            print(f"[ios-helper] failed to create functions folder {current!r}: {dirtree_t.errstr(err)}")
 
 
 def _move_segment_functions(
@@ -259,10 +259,10 @@ def _print_summary(stats: OrganizeStats, moved_per_folder: Counter[str], failure
         else ""
     )
     print(
-        f"[iOSHelper] organized functions: {stats.moved} moved{breakdown}, {stats.skipped} skipped, {stats.failed} failed"
+        f"[ios-helper] organized functions: {stats.moved} moved{breakdown}, {stats.skipped} skipped, {stats.failed} failed"
     )
     if failure_examples:
-        print(f"[iOSHelper] could not move e.g.: {', '.join(failure_examples)}")
+        print(f"[ios-helper] could not move e.g.: {', '.join(failure_examples)}")
 
 
 def _warn_if_root_not_empty(func_dir: dirtree_t) -> None:
@@ -277,7 +277,7 @@ def _warn_if_root_not_empty(func_dir: dirtree_t) -> None:
     """
     remaining = _count_root_functions(func_dir)
     if remaining:
-        print(f"[iOSHelper] warning: {remaining} function(s) still at the Functions window root")
+        print(f"[ios-helper] warning: {remaining} function(s) still at the Functions window root")
 
 
 def _count_root_functions(func_dir: dirtree_t) -> int:

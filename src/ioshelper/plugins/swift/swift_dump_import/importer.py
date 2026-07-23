@@ -197,7 +197,7 @@ def import_swift_dump() -> None:
             return
         ipsw = get_ipsw_path()
         if not ipsw:
-            print("[swift_dump] `ipsw` binary not found — set it via Edit > Plugins > iOSHelper > Configure ipsw path")
+            print("[swift_dump] `ipsw` binary not found — set it via Edit > Plugins > ios-helper > Configure ipsw path")
             return
 
         binary_name = binary.rsplit("/", 1)[-1]

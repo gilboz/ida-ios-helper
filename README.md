@@ -233,7 +233,7 @@ After:
 
 ## Automatic typing for `OSObject_typed_operator_new`
 
-Run `Edit->Plugins->iOSHelper->Locate all kalloc_type_view` before.
+Run `Edit->Plugins->ios-helper->Locate all kalloc_type_view` before.
 
 Before:
 

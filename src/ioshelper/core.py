@@ -178,4 +178,4 @@ def kernel_cache_plugins() -> list[ComponentFactory]:
     ]
 
 
-plugin_core = PluginCore.factory("iOSHelper", get_modules_for_file(), run_callback)
+plugin_core = PluginCore.factory("ios-helper", get_modules_for_file(), run_callback)
