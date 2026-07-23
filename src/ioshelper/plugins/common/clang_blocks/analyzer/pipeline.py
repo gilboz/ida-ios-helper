@@ -9,7 +9,10 @@ __all__ = [
     "analyze_blocks_in_func",
     "is_func_block_analyzed",
     "mark_func_block_analyzed",
+    "sync_block_fields_in_func",
 ]
+
+import dataclasses
 
 import ida_netnode
 from idahelper import objc, widgets
@@ -95,4 +98,34 @@ def analyze_blocks_in_func(func_ea: int, options: BlocksAnalyzerOptions, *, forc
         widgets.refresh_pseudocode_widgets()
 
     mark_func_block_analyzed(func_ea)
+    return changed
+
+
+def sync_block_fields_in_func(func_ea: int, options: BlocksAnalyzerOptions) -> bool:
+    """
+    Run only the capture-field rename/retype on the function at `func_ea`.
+
+    A lighter pass than `analyze_blocks_in_func` for a function whose blocks are
+    already typed — e.g. to re-sync the captures after renaming or retyping the
+    variables assigned into them. IDA's stack-block analysis, the byref recovery,
+    and the block naming do not run, and the function is not marked analyzed. The
+    field steps honor the same `rename-fields` / `retype-fields` gates as the full
+    pipeline.
+
+    Args:
+        func_ea: The function's entry address.
+        options: The gates selecting which of the field steps run.
+
+    Returns:
+        `True` if at least one field was modified.
+    """
+    if not (options.rename_fields or options.retype_fields):
+        return False
+    scan = BlocksScan.from_ea(func_ea)
+    if scan is None:
+        print(f"[Error] Failed to decompile func at {func_ea:X}")
+        return False
+    changed = rename_blocks_in_func(scan, dataclasses.replace(options, rename_blocks=False))
+    if changed:
+        widgets.refresh_pseudocode_widgets()
     return changed

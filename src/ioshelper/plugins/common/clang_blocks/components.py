@@ -14,10 +14,11 @@ from ioshelper.base.reloadable_plugin import HexraysHookComponent, UIAction, UIA
 
 from .analyzer.auto_analyze import BlocksAutoAnalyzeHook
 from .analyzer.options import CLANG_BLOCKS_ANALYZER_COMPONENT_NAME, BlocksAnalyzerOptions
-from .analyzer.pipeline import analyze_blocks_in_func
+from .analyzer.pipeline import analyze_blocks_in_func, sync_block_fields_in_func
 from .optimizer import objc_blocks_optimizer_hooks_t
 
 ACTION_ID = "ioshelper:analyze_clang_blocks"
+FIELDS_ACTION_ID = "ioshelper:sync_clang_block_fields"
 
 
 def dynamic_menu_add(widget, _popup) -> bool:
@@ -44,7 +45,18 @@ clang_blocks_analyzer_component = UIActionsComponent.factory(
             ),
             menu_location=UIAction.base_location(core),
             dynamic_menu_add=dynamic_menu_add,
-        )
+        ),
+        lambda core, options: UIAction(
+            FIELDS_ACTION_ID,
+            idaapi.action_desc_t(
+                FIELDS_ACTION_ID,
+                "[ios-helper] Rename and retype block capture fields in current function",
+                ClangBlockFieldsAction(options),
+                "F3",
+            ),
+            menu_location=UIAction.base_location(core),
+            dynamic_menu_add=dynamic_menu_add,
+        ),
     ],
     options=BlocksAnalyzerOptions,
 )
@@ -86,6 +98,35 @@ class ClangBlocksAnalyzeAction(ida_kernwin.action_handler_t):
             return 0
 
         analyze_blocks_in_func(ctx.cur_func.start_ea, self._options)
+        return 0
+
+    def update(self, ctx) -> int:
+        return idaapi.AST_ENABLE_ALWAYS
+
+
+class ClangBlockFieldsAction(ida_kernwin.action_handler_t):
+    """
+    Run only the capture-field rename/retype on the current function.
+
+    A lighter re-sync than the full pipeline, for blocks that are already typed —
+    e.g. after renaming or retyping the variables assigned into the captures. The
+    field steps honor the same `rename-fields` / `retype-fields` gates.
+
+    Args:
+        options: The `[clang-blocks-analyzer]` step gates, resolved by the component
+            and passed in.
+    """
+
+    def __init__(self, options: BlocksAnalyzerOptions) -> None:
+        super().__init__()
+        self._options = options
+
+    def activate(self, ctx: ida_kernwin.action_ctx_base_t):
+        if ctx.cur_func is None:
+            print("No function selected")
+            return 0
+
+        sync_block_fields_in_func(ctx.cur_func.start_ea, self._options)
         return 0
 
     def update(self, ctx) -> int:

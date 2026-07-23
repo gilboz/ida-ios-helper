@@ -364,7 +364,7 @@ Always loaded:
 |---|---|:-:|:-:|
 | `this-arg-fixer` | Convert the first function argument to this/self | ✔ | |
 | `toggle-mount` | Toggle the plugin's optimizations on/off at runtime | ✔ | |
-| `clang-blocks-analyzer` | Analyze Clang blocks: manual action plus optional `auto` on decompile (see its options below) | ✔ | |
+| `clang-blocks-analyzer` | Analyze Clang blocks: manual actions (full pipeline / fields-only) plus optional `auto` on decompile (see its options below) | ✔ | |
 | `clang-blocks-optimizer` | Optimize Clang blocks initialization in the decompiler | | |
 | `jump-to-string` | Jump to a function using a specific string | ✔ | |
 | `range-condition-optimizer` | Simplify range-check conditions in the decompiler | | |
@@ -378,6 +378,9 @@ The steps of the `clang-blocks-analyzer` action are boolean options in the compo
 The `auto` option additionally runs the same pipeline (honoring the same step options)
 the first time a function that uses blocks is shown in a pseudocode view (GUI only).
 The view's initial text is always pre-analysis; a refresh shows the result.
+A second menu action (F3) runs only the capture-field rename/retype on the current function —
+a light re-sync after you rename or retype the variables assigned into the captures —
+without IDA's stack-block analysis or the other steps.
 
 ```toml
 [clang-blocks-analyzer]

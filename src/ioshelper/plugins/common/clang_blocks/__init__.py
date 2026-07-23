@@ -12,12 +12,13 @@ __all__ = [
     "clang_blocks_analyzer_component",
     "clang_blocks_auto_analyzer_component",
     "rename_blocks_in_func",
+    "sync_block_fields_in_func",
     "try_add_block_arg_byref_to_func",
 ]
 
 from .analyzer.byref_args import try_add_block_arg_byref_to_func
 from .analyzer.options import CLANG_BLOCKS_ANALYZER_COMPONENT_NAME
-from .analyzer.pipeline import analyze_blocks_in_func
+from .analyzer.pipeline import analyze_blocks_in_func, sync_block_fields_in_func
 from .analyzer.renamer import rename_blocks_in_func
 from .analyzer.scan import BlocksScan
 from .components import (
